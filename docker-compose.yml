@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VAULTAGENT_API_SECRET=${VAULTAGENT_API_SECRET:-change-me-in-production}
+    restart: unless-stopped
+
+  # Optional: MCP proxy server (uncomment to enable)
+  # mcp-proxy:
+  #   build:
+  #     context: ./mcp-server
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - ./policies:/app/policies:ro
+  #     - ./audit-logs:/app/logs
+  #   environment:
+  #     - VAULTAGENT_POLICY_PATH=/app/policies/default.yaml
+  #     - VAULTAGENT_AUDIT_PATH=/app/logs/audit.jsonl
+  #     - VAULTAGENT_CLOUD_ENDPOINT=http://dashboard:3000/api/v1/ingest

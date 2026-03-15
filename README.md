@@ -225,7 +225,57 @@ rate_limits:
 | Team | $499/mo | 50 | 1M | 1 year |
 | Enterprise | Custom | Unlimited | Unlimited | Custom |
 
-Self-hosted SDK is always free and open-source.
+Self-hosted SDK and Dashboard are always free and open-source.
+
+## Self-Hosting
+
+You can run the entire VaultAgent stack on your own infrastructure — no cloud account needed.
+
+### Option 1: Docker (Recommended)
+
+```bash
+git clone https://github.com/aplomb2/VaultAgent.git
+cd VaultAgent
+
+# Start the dashboard
+docker compose up -d
+
+# Dashboard is now at http://localhost:3000
+```
+
+### Option 2: Manual
+
+```bash
+# Dashboard
+cd dashboard
+npm install
+npm run build
+npm start
+# → http://localhost:3000
+
+# SDK (Python)
+pip install vaultagent
+
+# Point SDK to your self-hosted dashboard
+vault = VaultAgent(
+    policy="policy.yaml",
+    api_key="your-local-key",          # Configure in dashboard
+    cloud_endpoint="http://localhost:3000/api/v1"
+)
+```
+
+### Option 3: SDK Only (No Dashboard)
+
+```bash
+pip install vaultagent
+```
+
+```python
+# Pure local mode — logs to file, no cloud dependency
+vault = VaultAgent(policy="policy.yaml", audit_file="audit.jsonl")
+```
+
+All audit logs stay on your machine. Zero data leaves your network.
 
 ## Contributing
 
