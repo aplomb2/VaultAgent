@@ -1,25 +1,29 @@
 "use client";
 
 import { useState } from "react";
+import { useSession } from "next-auth/react";
 import { ChevronDown, ChevronRight, Inbox } from "lucide-react";
 import ApprovalCard from "@/components/ApprovalCard";
 import type { Approval } from "@/lib/types";
 import { getApprovals, resolveApproval } from "@/lib/store";
 
 export default function ApprovalsPage() {
+  const { data: session } = useSession();
   const [allApprovals, setAllApprovals] = useState<Approval[]>(getApprovals());
   const [showResolved, setShowResolved] = useState(false);
 
   const pending = allApprovals.filter((a) => a.status === "pending");
   const resolved = allApprovals.filter((a) => a.status !== "pending");
 
+  const userEmail = session?.user?.email ?? "unknown@vault.dev";
+
   function handleApprove(id: string) {
-    resolveApproval(id, "approved", "admin@vault.dev");
+    resolveApproval(id, "approved", userEmail);
     setAllApprovals([...getApprovals()]);
   }
 
   function handleReject(id: string) {
-    resolveApproval(id, "rejected", "admin@vault.dev");
+    resolveApproval(id, "rejected", userEmail);
     setAllApprovals([...getApprovals()]);
   }
 

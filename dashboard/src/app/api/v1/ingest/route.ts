@@ -52,11 +52,11 @@ function validateEntry(entry: unknown): string | null {
 }
 
 /**
- * Verify the Bearer token if an API key is configured.
+ * Verify the Bearer token against the store API key or VAULTAGENT_API_SECRET env var.
  * Returns an error response if authentication fails, or null if OK.
  */
 function checkAuth(request: NextRequest): NextResponse | null {
-  const apiKey = getApiKey();
+  const apiKey = process.env.VAULTAGENT_API_SECRET || getApiKey();
   if (!apiKey) {
     // No API key configured; skip authentication
     return null;
@@ -74,7 +74,7 @@ function checkAuth(request: NextRequest): NextResponse | null {
   if (token !== apiKey) {
     return NextResponse.json(
       { error: "Invalid API key" },
-      { status: 403 },
+      { status: 401 },
     );
   }
 

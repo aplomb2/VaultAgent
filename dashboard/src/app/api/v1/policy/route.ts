@@ -6,6 +6,32 @@ import type { PolicyConfig, AgentPolicy } from "@/lib/types";
 import { getPolicies, updatePolicies } from "@/lib/store";
 
 /**
+ * Verify Bearer token against VAULTAGENT_API_SECRET.
+ * Returns an error response if authentication fails, or null if OK.
+ */
+function checkApiAuth(request: NextRequest): NextResponse | null {
+  const secret = process.env.VAULTAGENT_API_SECRET;
+  if (!secret) return null;
+
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return NextResponse.json(
+      { error: "Missing or malformed Authorization header" },
+      { status: 401 },
+    );
+  }
+
+  if (authHeader.slice("Bearer ".length) !== secret) {
+    return NextResponse.json(
+      { error: "Invalid API key" },
+      { status: 401 },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Validate a policy config object.
  * Returns an error message if invalid, or null if valid.
  */
@@ -99,6 +125,9 @@ function validateAgentPolicy(agent: unknown, index: number): string | null {
  * Returns the current policy config. Optionally filter by agentId query param.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const agentId = searchParams.get("agentId");
 
@@ -132,6 +161,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Replace the entire policy config with the provided JSON body.
  */
 export async function PUT(request: NextRequest): Promise<NextResponse> {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();

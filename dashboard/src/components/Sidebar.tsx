@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession, signOut } from "next-auth/react";
 import {
   LayoutDashboard,
   Bot,
@@ -9,6 +10,7 @@ import {
   ClipboardCheck,
   ScrollText,
   Lock,
+  LogOut,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -22,6 +24,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { data: session } = useSession();
 
   return (
     <aside className="flex h-screen w-60 flex-col border-r border-slate-800 bg-slate-950">
@@ -67,9 +70,40 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="border-t border-slate-800/60 px-5 py-4">
-        <p className="text-[11px] text-slate-600">VaultAgent v1.0.0</p>
+      {/* User menu */}
+      <div className="border-t border-slate-800/60 px-3 py-3">
+        {session?.user ? (
+          <div className="flex items-center gap-3 rounded-lg px-2 py-2">
+            {session.user.image ? (
+              <img
+                src={session.user.image}
+                alt=""
+                className="h-7 w-7 rounded-full ring-1 ring-slate-700"
+              />
+            ) : (
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-800 text-xs font-medium text-slate-400">
+                {(session.user.name ?? session.user.email ?? "?")[0].toUpperCase()}
+              </div>
+            )}
+            <div className="flex-1 overflow-hidden">
+              <p className="truncate text-xs font-medium text-slate-300">
+                {session.user.name ?? "User"}
+              </p>
+              <p className="truncate text-[10px] text-slate-600">
+                {session.user.email}
+              </p>
+            </div>
+            <button
+              onClick={() => signOut({ callbackUrl: "/login" })}
+              className="rounded-md p-1.5 text-slate-600 transition-colors hover:bg-slate-800 hover:text-slate-400"
+              title="Sign out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <p className="px-2 text-[11px] text-slate-600">VaultAgent v1.0.0</p>
+        )}
       </div>
     </aside>
   );

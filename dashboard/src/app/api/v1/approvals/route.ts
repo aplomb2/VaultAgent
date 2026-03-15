@@ -13,6 +13,32 @@ import {
 const VALID_STATUSES = new Set(["pending", "approved", "rejected"]);
 
 /**
+ * Verify Bearer token against VAULTAGENT_API_SECRET.
+ * Returns an error response if authentication fails, or null if OK.
+ */
+function checkApiAuth(request: NextRequest): NextResponse | null {
+  const secret = process.env.VAULTAGENT_API_SECRET;
+  if (!secret) return null;
+
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return NextResponse.json(
+      { error: "Missing or malformed Authorization header" },
+      { status: 401 },
+    );
+  }
+
+  if (authHeader.slice("Bearer ".length) !== secret) {
+    return NextResponse.json(
+      { error: "Invalid API key" },
+      { status: 401 },
+    );
+  }
+
+  return null;
+}
+
+/**
  * Generate a random approval ID.
  */
 function generateId(): string {
@@ -30,6 +56,9 @@ function generateId(): string {
  * List all approvals. Supports optional `?status=pending` query filter.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   const { searchParams } = new URL(request.url);
   const statusFilter = searchParams.get("status");
 
@@ -59,6 +88,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
  * Body: `{ agentId, tool, inputArgs }`
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();
@@ -120,6 +152,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
  * Body: `{ id, status: 'approved' | 'rejected', resolvedBy }`
  */
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   let body: unknown;
   try {
     body = await request.json();
