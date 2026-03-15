@@ -1,14 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Save, Download, Code, Table } from "lucide-react";
+import { Plus, Trash2, Save, Download, Code, Table, Check } from "lucide-react";
 import clsx from "clsx";
 import type { PolicyConfig, PolicyRule, AgentPolicy } from "@/lib/types";
 import { getPolicies, updatePolicies, getAgents } from "@/lib/store";
 
 type ViewMode = "visual" | "yaml";
 
-// Convert policy config to a YAML-like string representation
+// Convert policy config to YAML-like string
 function toYaml(config: PolicyConfig): string {
   const lines: string[] = [];
   lines.push(`version: "${config.version}"`);
@@ -34,10 +34,9 @@ function toYaml(config: PolicyConfig): string {
   return lines.join("\n");
 }
 
-// Parse YAML-like string back to PolicyConfig (simple parser)
+// Parse YAML-like string back to PolicyConfig
 function fromYaml(yaml: string): PolicyConfig | null {
   try {
-    // Very basic YAML-like parser for the specific structure
     const config: PolicyConfig = {
       version: "1.0.0",
       defaultAction: "deny",
@@ -50,7 +49,6 @@ function fromYaml(yaml: string): PolicyConfig | null {
     const defaultMatch = yaml.match(/defaultAction:\s*"([^"]+)"/);
     if (defaultMatch) config.defaultAction = defaultMatch[1];
 
-    // Parse agents using regex blocks
     const agentBlocks = yaml.split(/\n\s*- agentId:/).slice(1);
     for (const block of agentBlocks) {
       const fullBlock = "- agentId:" + block;
@@ -89,9 +87,9 @@ const actionOptions: PolicyRule["action"][] = [
 ];
 
 const actionBadgeColors: Record<string, string> = {
-  allow: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  deny: "bg-red-500/20 text-red-400 border-red-500/30",
-  require_approval: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  allow: "bg-emerald-500/10 text-emerald-400",
+  deny: "bg-red-500/10 text-red-400",
+  require_approval: "bg-amber-500/10 text-amber-400",
 };
 
 export default function PolicyEditor() {
@@ -102,20 +100,16 @@ export default function PolicyEditor() {
 
   const agents = getAgents();
 
-  // Handle switching between views
   function switchView(mode: ViewMode) {
     if (mode === "yaml") {
       setYamlContent(toYaml(config));
     } else {
       const parsed = fromYaml(yamlContent);
-      if (parsed) {
-        setConfig(parsed);
-      }
+      if (parsed) setConfig(parsed);
     }
     setViewMode(mode);
   }
 
-  // Update a specific rule
   function updateRule(
     agentIndex: number,
     ruleIndex: number,
@@ -123,44 +117,42 @@ export default function PolicyEditor() {
     value: string
   ) {
     const updated = { ...config };
-    const agents = [...updated.agents];
-    const agent = { ...agents[agentIndex] };
+    const agentsCopy = [...updated.agents];
+    const agent = { ...agentsCopy[agentIndex] };
     const rules = [...agent.rules];
     rules[ruleIndex] = { ...rules[ruleIndex], [field]: value };
     agent.rules = rules;
-    agents[agentIndex] = agent;
-    updated.agents = agents;
+    agentsCopy[agentIndex] = agent;
+    updated.agents = agentsCopy;
     setConfig(updated);
   }
 
-  // Add a new rule to an agent policy
   function addRule(agentIndex: number) {
     const updated = { ...config };
-    const agents = [...updated.agents];
-    const agent = { ...agents[agentIndex] };
+    const agentsCopy = [...updated.agents];
+    const agent = { ...agentsCopy[agentIndex] };
     agent.rules = [...agent.rules, { tool: "", action: "deny" as const }];
-    agents[agentIndex] = agent;
-    updated.agents = agents;
+    agentsCopy[agentIndex] = agent;
+    updated.agents = agentsCopy;
     setConfig(updated);
   }
 
-  // Remove a rule from an agent policy
   function removeRule(agentIndex: number, ruleIndex: number) {
     const updated = { ...config };
-    const agents = [...updated.agents];
-    const agent = { ...agents[agentIndex] };
+    const agentsCopy = [...updated.agents];
+    const agent = { ...agentsCopy[agentIndex] };
     agent.rules = agent.rules.filter((_, i) => i !== ruleIndex);
-    agents[agentIndex] = agent;
-    updated.agents = agents;
+    agentsCopy[agentIndex] = agent;
+    updated.agents = agentsCopy;
     setConfig(updated);
   }
 
-  // Save changes to the store
   function handleSave() {
     if (viewMode === "yaml") {
       const parsed = fromYaml(yamlContent);
       if (!parsed) {
-        setSaveStatus("Invalid YAML format");
+        setSaveStatus("error");
+        setTimeout(() => setSaveStatus(""), 2000);
         return;
       }
       updatePolicies(parsed);
@@ -169,14 +161,12 @@ export default function PolicyEditor() {
       updatePolicies(config);
       setYamlContent(toYaml(config));
     }
-    setSaveStatus("Saved successfully");
+    setSaveStatus("saved");
     setTimeout(() => setSaveStatus(""), 2000);
   }
 
-  // Export as YAML file
   function handleExport() {
-    const content =
-      viewMode === "yaml" ? yamlContent : toYaml(config);
+    const content = viewMode === "yaml" ? yamlContent : toYaml(config);
     const blob = new Blob([content], { type: "text/yaml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -190,85 +180,92 @@ export default function PolicyEditor() {
     <div className="space-y-6">
       {/* Toolbar */}
       <div className="flex items-center justify-between">
-        <div className="flex gap-2">
+        <div className="flex rounded-lg border border-slate-800 bg-slate-900/50 p-0.5">
           <button
             onClick={() => switchView("visual")}
             className={clsx(
-              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
               viewMode === "visual"
-                ? "bg-slate-700 text-slate-100"
-                : "bg-slate-800 text-slate-400 hover:text-slate-300"
+                ? "bg-slate-800 text-white"
+                : "text-slate-400 hover:text-slate-300"
             )}
           >
-            <Table className="h-4 w-4" />
-            Visual Editor
+            <Table className="h-3.5 w-3.5" />
+            Visual
           </button>
           <button
             onClick={() => switchView("yaml")}
             className={clsx(
-              "flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+              "flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
               viewMode === "yaml"
-                ? "bg-slate-700 text-slate-100"
-                : "bg-slate-800 text-slate-400 hover:text-slate-300"
+                ? "bg-slate-800 text-white"
+                : "text-slate-400 hover:text-slate-300"
             )}
           >
-            <Code className="h-4 w-4" />
-            YAML Editor
+            <Code className="h-3.5 w-3.5" />
+            YAML
           </button>
         </div>
-        <div className="flex items-center gap-3">
-          {saveStatus && (
-            <span
-              className={clsx(
-                "text-sm",
-                saveStatus.includes("Invalid")
-                  ? "text-red-400"
-                  : "text-emerald-400"
-              )}
-            >
-              {saveStatus}
-            </span>
-          )}
+
+        <div className="flex items-center gap-2">
           <button
             onClick={handleExport}
-            className="flex items-center gap-2 rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium text-slate-300 hover:bg-slate-600"
+            className="flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5" />
             Export
           </button>
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500"
+            className={clsx(
+              "flex items-center gap-2 rounded-lg px-4 py-1.5 text-xs font-medium text-white transition-colors",
+              saveStatus === "saved"
+                ? "bg-emerald-600"
+                : saveStatus === "error"
+                  ? "bg-red-600"
+                  : "bg-emerald-500 hover:bg-emerald-400"
+            )}
           >
-            <Save className="h-4 w-4" />
-            Save
+            {saveStatus === "saved" ? (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                Saved
+              </>
+            ) : saveStatus === "error" ? (
+              "Invalid YAML"
+            ) : (
+              <>
+                <Save className="h-3.5 w-3.5" />
+                Save
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* YAML Editor */}
+      {/* YAML editor */}
       {viewMode === "yaml" && (
-        <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+        <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
           <textarea
             value={yamlContent}
             onChange={(e) => setYamlContent(e.target.value)}
-            className="h-[600px] w-full resize-none rounded-lg bg-slate-950 p-4 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            className="h-[600px] w-full resize-none bg-transparent p-6 font-mono text-sm text-slate-300 outline-none placeholder:text-slate-600"
             spellCheck={false}
           />
         </div>
       )}
 
-      {/* Visual Editor */}
+      {/* Visual editor */}
       {viewMode === "visual" && (
         <div className="space-y-6">
           {/* Global settings */}
-          <div className="rounded-xl border border-slate-700 bg-slate-800 p-6">
-            <h3 className="mb-4 text-lg font-semibold text-slate-100">
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+            <h3 className="mb-4 text-sm font-semibold text-white">
               Global Settings
             </h3>
             <div className="flex gap-6">
               <div>
-                <label className="mb-1 block text-sm text-slate-400">
+                <label className="mb-1.5 block text-xs text-slate-500">
                   Version
                 </label>
                 <input
@@ -277,11 +274,11 @@ export default function PolicyEditor() {
                   onChange={(e) =>
                     setConfig({ ...config, version: e.target.value })
                   }
-                  className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/25"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm text-slate-400">
+                <label className="mb-1.5 block text-xs text-slate-500">
                   Default Action
                 </label>
                 <select
@@ -289,7 +286,7 @@ export default function PolicyEditor() {
                   onChange={(e) =>
                     setConfig({ ...config, defaultAction: e.target.value })
                   }
-                  className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                  className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200 outline-none transition-colors focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/25"
                 >
                   <option value="deny">deny</option>
                   <option value="allow">allow</option>
@@ -299,7 +296,7 @@ export default function PolicyEditor() {
             </div>
           </div>
 
-          {/* Per-agent policy tables */}
+          {/* Per-agent policy cards */}
           {config.agents.map((agentPolicy, agentIndex) => {
             const agentInfo = agents.find(
               (a) => a.id === agentPolicy.agentId
@@ -307,41 +304,44 @@ export default function PolicyEditor() {
             return (
               <div
                 key={agentPolicy.agentId}
-                className="rounded-xl border border-slate-700 bg-slate-800 p-6"
+                className="rounded-xl border border-slate-800 bg-slate-900/50 p-6"
               >
-                <div className="mb-4 flex items-center justify-between">
+                <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-semibold text-slate-100">
+                    <h3 className="text-sm font-semibold text-white">
                       {agentInfo?.name ?? agentPolicy.agentId}
                     </h3>
-                    <p className="text-sm text-slate-400">
+                    <p className="mt-0.5 text-xs text-slate-500">
                       {agentPolicy.description}
                     </p>
                   </div>
                   <button
                     onClick={() => addRule(agentIndex)}
-                    className="flex items-center gap-1 rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-600"
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
                     Add Rule
                   </button>
                 </div>
 
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-slate-700 text-left text-sm text-slate-400">
-                      <th className="pb-2 font-medium">Tool</th>
-                      <th className="pb-2 font-medium">Action</th>
-                      <th className="pb-2 font-medium">Constraints</th>
-                      <th className="pb-2 font-medium" />
+                    <tr className="border-b border-slate-800 text-left">
+                      <th className="pb-2.5 text-xs font-medium uppercase tracking-wider text-slate-500">
+                        Tool
+                      </th>
+                      <th className="pb-2.5 text-xs font-medium uppercase tracking-wider text-slate-500">
+                        Action
+                      </th>
+                      <th className="pb-2.5 text-xs font-medium uppercase tracking-wider text-slate-500">
+                        Constraints
+                      </th>
+                      <th className="pb-2.5" />
                     </tr>
                   </thead>
-                  <tbody>
+                  <tbody className="divide-y divide-slate-800/60">
                     {agentPolicy.rules.map((rule, ruleIndex) => (
-                      <tr
-                        key={ruleIndex}
-                        className="border-b border-slate-700/50"
-                      >
+                      <tr key={ruleIndex}>
                         <td className="py-3 pr-4">
                           <input
                             type="text"
@@ -354,7 +354,7 @@ export default function PolicyEditor() {
                                 e.target.value
                               )
                             }
-                            className="w-full rounded-md border border-slate-600 bg-slate-900 px-2 py-1.5 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 font-mono text-sm text-slate-200 outline-none transition-colors focus:border-emerald-500/50"
                           />
                         </td>
                         <td className="py-3 pr-4">
@@ -369,7 +369,7 @@ export default function PolicyEditor() {
                               )
                             }
                             className={clsx(
-                              "rounded-md border px-2 py-1.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500/50",
+                              "rounded-full px-3 py-1.5 text-xs font-medium outline-none",
                               actionBadgeColors[rule.action]
                             )}
                           >
@@ -380,19 +380,19 @@ export default function PolicyEditor() {
                             ))}
                           </select>
                         </td>
-                        <td className="py-3 pr-4 text-sm text-slate-400">
+                        <td className="py-3 pr-4 font-mono text-xs text-slate-500">
                           {rule.constraints
                             ? JSON.stringify(rule.constraints)
-                            : "—"}
+                            : "\u2014"}
                         </td>
                         <td className="py-3 text-right">
                           <button
                             onClick={() =>
                               removeRule(agentIndex, ruleIndex)
                             }
-                            className="rounded-md p-1 text-slate-500 hover:bg-red-500/10 hover:text-red-400"
+                            className="rounded-lg p-1.5 text-slate-600 transition-colors hover:bg-red-500/10 hover:text-red-400"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </td>
                       </tr>

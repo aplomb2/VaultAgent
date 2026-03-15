@@ -6,7 +6,7 @@ import {
   Download,
   ChevronUp,
   ChevronDown,
-  Filter,
+  SlidersHorizontal,
 } from "lucide-react";
 import clsx from "clsx";
 import type { AuditLogEntry } from "@/lib/types";
@@ -16,10 +16,10 @@ import type { AuditLogFilters } from "@/lib/store";
 type SortField = "timestamp" | "agentId" | "tool" | "action" | "latencyMs";
 type SortDirection = "asc" | "desc";
 
-const actionColors: Record<string, string> = {
-  allow: "bg-emerald-500/20 text-emerald-400",
-  deny: "bg-red-500/20 text-red-400",
-  require_approval: "bg-amber-500/20 text-amber-400",
+const actionBadge: Record<string, string> = {
+  allow: "bg-emerald-500/10 text-emerald-400",
+  deny: "bg-red-500/10 text-red-400",
+  require_approval: "bg-amber-500/10 text-amber-400",
 };
 
 function formatTimestamp(iso: string): string {
@@ -40,7 +40,6 @@ export default function AuditLogTable() {
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
-  // Fetch and sort logs
   const logs = useMemo(() => {
     const fetched = getAuditLogs(filters);
     return fetched.sort((a, b) => {
@@ -51,7 +50,6 @@ export default function AuditLogTable() {
     });
   }, [filters, sortField, sortDir]);
 
-  // Toggle sort column
   function toggleSort(field: SortField) {
     if (sortField === field) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -61,17 +59,16 @@ export default function AuditLogTable() {
     }
   }
 
-  // Sort indicator component
-  function SortIndicator({ field }: { field: SortField }) {
-    if (sortField !== field) return null;
+  function SortIcon({ field }: { field: SortField }) {
+    if (sortField !== field)
+      return <ChevronDown className="inline h-3 w-3 opacity-0 group-hover:opacity-30" />;
     return sortDir === "asc" ? (
-      <ChevronUp className="inline h-3.5 w-3.5" />
+      <ChevronUp className="inline h-3 w-3 text-emerald-400" />
     ) : (
-      <ChevronDown className="inline h-3.5 w-3.5" />
+      <ChevronDown className="inline h-3 w-3 text-emerald-400" />
     );
   }
 
-  // Export functionality
   function exportData(format: "csv" | "json") {
     let content: string;
     let mimeType: string;
@@ -114,20 +111,19 @@ export default function AuditLogTable() {
 
   return (
     <div className="space-y-4">
-      {/* Filter controls */}
+      {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <span className="text-sm font-medium text-slate-400">Filters</span>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <SlidersHorizontal className="h-3.5 w-3.5" />
+          Filters
         </div>
 
-        {/* Agent filter */}
         <select
           value={filters.agentId ?? ""}
           onChange={(e) =>
             setFilters({ ...filters, agentId: e.target.value || undefined })
           }
-          className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 outline-none transition-colors focus:border-emerald-500/50"
         >
           <option value="">All Agents</option>
           {agents.map((a) => (
@@ -137,7 +133,6 @@ export default function AuditLogTable() {
           ))}
         </select>
 
-        {/* Action filter */}
         <select
           value={filters.action ?? ""}
           onChange={(e) =>
@@ -146,7 +141,7 @@ export default function AuditLogTable() {
               action: (e.target.value as AuditLogEntry["action"]) || undefined,
             })
           }
-          className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-300 outline-none transition-colors focus:border-emerald-500/50"
         >
           <option value="">All Actions</option>
           <option value="allow">Allow</option>
@@ -154,9 +149,8 @@ export default function AuditLogTable() {
           <option value="require_approval">Require Approval</option>
         </select>
 
-        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
             placeholder="Search tools, reasons..."
@@ -164,100 +158,91 @@ export default function AuditLogTable() {
             onChange={(e) =>
               setFilters({ ...filters, search: e.target.value || undefined })
             }
-            className="rounded-lg border border-slate-600 bg-slate-900 py-1.5 pl-9 pr-3 text-sm text-slate-300 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+            className="rounded-lg border border-slate-700 bg-slate-800 py-1.5 pl-8 pr-3 text-xs text-slate-300 placeholder-slate-500 outline-none transition-colors focus:border-emerald-500/50"
           />
         </div>
 
-        {/* Export buttons */}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-slate-600">{logs.length} entries</span>
           <button
             onClick={() => exportData("csv")}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-600"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3 w-3" />
             CSV
           </button>
           <button
             onClick={() => exportData("json")}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-600"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
           >
-            <Download className="h-3.5 w-3.5" />
+            <Download className="h-3 w-3" />
             JSON
           </button>
         </div>
       </div>
 
-      {/* Results count */}
-      <p className="text-sm text-slate-500">{logs.length} entries</p>
-
       {/* Table */}
-      <div className="overflow-x-auto rounded-xl border border-slate-700 bg-slate-800">
+      <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-slate-700 text-left text-slate-400">
-              <th
-                className="cursor-pointer px-4 py-3 font-medium hover:text-slate-200"
-                onClick={() => toggleSort("timestamp")}
-              >
-                Timestamp <SortIndicator field="timestamp" />
+            <tr className="border-b border-slate-800 text-left">
+              {(
+                [
+                  ["timestamp", "Timestamp"],
+                  ["agentId", "Agent"],
+                  ["tool", "Tool"],
+                  ["action", "Action"],
+                ] as [SortField, string][]
+              ).map(([field, label]) => (
+                <th
+                  key={field}
+                  className="group cursor-pointer px-5 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-300"
+                  onClick={() => toggleSort(field)}
+                >
+                  {label} <SortIcon field={field} />
+                </th>
+              ))}
+              <th className="px-5 py-3 text-xs font-medium uppercase tracking-wider text-slate-500">
+                Reason
               </th>
               <th
-                className="cursor-pointer px-4 py-3 font-medium hover:text-slate-200"
-                onClick={() => toggleSort("agentId")}
-              >
-                Agent <SortIndicator field="agentId" />
-              </th>
-              <th
-                className="cursor-pointer px-4 py-3 font-medium hover:text-slate-200"
-                onClick={() => toggleSort("tool")}
-              >
-                Tool <SortIndicator field="tool" />
-              </th>
-              <th
-                className="cursor-pointer px-4 py-3 font-medium hover:text-slate-200"
-                onClick={() => toggleSort("action")}
-              >
-                Action <SortIndicator field="action" />
-              </th>
-              <th className="px-4 py-3 font-medium">Reason</th>
-              <th
-                className="cursor-pointer px-4 py-3 font-medium hover:text-slate-200"
+                className="group cursor-pointer px-5 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 transition-colors hover:text-slate-300"
                 onClick={() => toggleSort("latencyMs")}
               >
-                Latency <SortIndicator field="latencyMs" />
+                Latency <SortIcon field="latencyMs" />
               </th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-800/60">
             {logs.slice(0, 100).map((log) => (
               <tr
                 key={log.id}
-                className="border-b border-slate-700/50 hover:bg-slate-700/30"
+                className="transition-colors hover:bg-slate-800/50"
               >
-                <td className="px-4 py-2.5 text-slate-300">
+                <td className="px-5 py-2.5 text-xs text-slate-400">
                   {formatTimestamp(log.timestamp)}
                 </td>
-                <td className="px-4 py-2.5 text-slate-300">
+                <td className="px-5 py-2.5 text-xs text-slate-300">
                   {getAgentName(log.agentId)}
                 </td>
-                <td className="px-4 py-2.5 font-mono text-slate-300">
+                <td className="px-5 py-2.5 font-mono text-xs text-slate-300">
                   {log.tool}
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="px-5 py-2.5">
                   <span
                     className={clsx(
-                      "rounded-full px-2 py-0.5 text-xs font-medium",
-                      actionColors[log.action]
+                      "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                      actionBadge[log.action]
                     )}
                   >
                     {log.action}
                   </span>
                 </td>
-                <td className="max-w-xs truncate px-4 py-2.5 text-slate-400">
-                  {log.denialReason ?? "—"}
+                <td className="max-w-[200px] truncate px-5 py-2.5 text-xs text-slate-500">
+                  {log.denialReason ?? "\u2014"}
                 </td>
-                <td className="px-4 py-2.5 text-slate-400">
-                  {log.latencyMs != null ? `${log.latencyMs}ms` : "—"}
+                <td className="px-5 py-2.5 font-mono text-xs text-slate-500">
+                  {log.latencyMs != null ? `${log.latencyMs}ms` : "\u2014"}
                 </td>
               </tr>
             ))}

@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
+import { Radio } from "lucide-react";
 import clsx from "clsx";
 import type { AuditLogEntry } from "@/lib/types";
 import { getAuditLogs, getAgentName } from "@/lib/store";
 
-// Color map for action badges
-const actionColors: Record<string, string> = {
-  allow: "bg-emerald-500/20 text-emerald-400",
-  deny: "bg-red-500/20 text-red-400",
-  require_approval: "bg-amber-500/20 text-amber-400",
+const actionBadge: Record<string, string> = {
+  allow: "bg-emerald-500/10 text-emerald-400",
+  deny: "bg-red-500/10 text-red-400",
+  require_approval: "bg-amber-500/10 text-amber-400",
 };
 
 function formatTime(iso: string): string {
@@ -26,10 +25,8 @@ export default function LiveFeed() {
   const [events, setEvents] = useState<AuditLogEntry[]>([]);
 
   useEffect(() => {
-    // Load initial events
     setEvents(getAuditLogs().slice(0, 20));
 
-    // Simulate a live feed by rotating every 3 seconds
     const interval = setInterval(() => {
       setEvents((prev) => {
         const logs = getAuditLogs();
@@ -47,36 +44,39 @@ export default function LiveFeed() {
   }, []);
 
   return (
-    <div className="rounded-xl border border-slate-700 bg-slate-800 p-6 shadow-lg">
-      <div className="mb-4 flex items-center gap-2">
-        <Activity className="h-5 w-5 text-emerald-400" />
-        <h3 className="text-lg font-semibold text-slate-100">Live Feed</h3>
-        <span className="ml-2 h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+    <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
+      <div className="mb-5 flex items-center gap-2.5">
+        <Radio className="h-4 w-4 text-emerald-400" />
+        <h3 className="text-sm font-semibold text-white">Live Feed</h3>
+        <span className="relative ml-1 flex h-2 w-2">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+        </span>
       </div>
 
-      <div className="max-h-80 space-y-2 overflow-y-auto">
+      <div className="max-h-80 space-y-1 overflow-y-auto">
         {events.map((event) => (
           <div
             key={event.id}
-            className="flex items-center gap-3 rounded-lg bg-slate-900/50 px-3 py-2 text-sm"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors hover:bg-slate-800/50"
           >
-            <span className="shrink-0 text-xs text-slate-500">
+            <span className="shrink-0 font-mono text-xs text-slate-500">
               {formatTime(event.timestamp)}
             </span>
             <span className="shrink-0 font-mono text-slate-300">
               {event.tool}
             </span>
-            <span className="text-slate-500">by</span>
-            <span className="text-slate-300">
+            <span className="text-slate-600">-</span>
+            <span className="truncate text-slate-400">
               {getAgentName(event.agentId)}
             </span>
             <span
               className={clsx(
-                "ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-medium",
-                actionColors[event.action]
+                "ml-auto shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                actionBadge[event.action]
               )}
             >
-              {event.action}
+              {event.action.replace("_", " ")}
             </span>
           </div>
         ))}
