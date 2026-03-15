@@ -1,0 +1,73 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vaultagent"
+version = "0.1.0"
+description = "Permission control for AI Agents — control what your agents can and cannot do."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "VaultAgent", email = "hello@vaultagent.dev" },
+]
+keywords = [
+    "ai", "agent", "security", "permissions", "authorization",
+    "llm", "tool-calling", "mcp", "audit", "compliance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pyyaml>=6.0",
+    "httpx>=0.25.0",
+]
+
+[project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.20.0"]
+langchain = ["langchain-core>=0.2.0"]
+all = ["openai>=1.0.0", "anthropic>=0.20.0", "langchain-core>=0.2.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://vaultagent.dev"
+Documentation = "https://docs.vaultagent.dev"
+Repository = "https://github.com/aplomb2/VaultAgent"
+Issues = "https://github.com/aplomb2/VaultAgent/issues"
+
+[project.scripts]
+vaultagent = "vaultagent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vaultagent"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

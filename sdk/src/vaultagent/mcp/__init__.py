@@ -1,0 +1,1 @@
+# VaultAgent MCP integration

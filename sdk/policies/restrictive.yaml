@@ -1,0 +1,59 @@
+# VaultAgent Restrictive Policy Template
+# Use this as a starting point for high-security environments.
+# Default: deny everything, explicitly allow what's needed.
+
+version: "1.0"
+
+agents:
+  customer-support-bot:
+    description: "Customer support agent — read-only access to customer data, can create tickets"
+    tools:
+      - tool: "database.query"
+        action: allow
+        constraints:
+          tables: ["customers", "orders", "tickets"]
+          operations: ["SELECT"]
+      - tool: "ticket.create"
+        action: allow
+      - tool: "ticket.update"
+        action: allow
+        constraints:
+          # Can only update tickets, not close them
+          operations: ["UPDATE"]
+      - tool: "email.send"
+        action: require_approval
+      - tool: "slack.send"
+        action: allow
+        constraints:
+          domains: ["*.company.com"]
+      - tool: "*"
+        action: deny
+    rate_limits:
+      max_calls_per_minute: 30
+      max_calls_per_hour: 500
+
+  data-analyst-bot:
+    description: "Data analysis agent — read-only database, write to /tmp/reports only"
+    tools:
+      - tool: "database.query"
+        action: allow
+        constraints:
+          operations: ["SELECT"]
+          max_rows: 10000
+      - tool: "file.write"
+        action: allow
+        constraints:
+          paths: ["/tmp/reports/*"]
+      - tool: "file.read"
+        action: allow
+        constraints:
+          paths: ["/data/*", "/tmp/reports/*"]
+      - tool: "*"
+        action: deny
+    rate_limits:
+      max_calls_per_minute: 10
+      max_calls_per_hour: 200
+
+defaults:
+  action: deny
+  log_level: "all"
