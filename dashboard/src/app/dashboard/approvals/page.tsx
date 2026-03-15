@@ -1,34 +1,98 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { ChevronDown, ChevronRight, Inbox } from "lucide-react";
 import ApprovalCard from "@/components/ApprovalCard";
 import type { Approval } from "@/lib/types";
-import { getApprovals, resolveApproval } from "@/lib/store";
+import {
+  getApprovals,
+  resolveApproval,
+  getAgentNames,
+} from "@/lib/store";
+import { getDemoApprovals, getDemoAgentNames } from "@/lib/demo-data";
 
 export default function ApprovalsPage() {
   const { data: session } = useSession();
-  const [allApprovals, setAllApprovals] = useState<Approval[]>(getApprovals());
+  const userId = (session?.user as Record<string, unknown>)?.id as string;
+
+  const [allApprovals, setAllApprovals] = useState<Approval[]>([]);
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    async function load() {
+      const [approvals, names] = await Promise.all([
+        getApprovals(userId),
+        getAgentNames(userId),
+      ]);
+
+      if (approvals.length === 0) {
+        setAllApprovals(getDemoApprovals());
+        setAgentNames(getDemoAgentNames());
+        setIsDemo(true);
+      } else {
+        setAllApprovals(approvals);
+        setAgentNames(names);
+        setIsDemo(false);
+      }
+      setLoading(false);
+    }
+
+    load();
+  }, [userId]);
 
   const pending = allApprovals.filter((a) => a.status === "pending");
   const resolved = allApprovals.filter((a) => a.status !== "pending");
 
   const userEmail = session?.user?.email ?? "unknown@vault.dev";
 
-  function handleApprove(id: string) {
-    resolveApproval(id, "approved", userEmail);
-    setAllApprovals([...getApprovals()]);
+  async function handleApprove(id: string) {
+    if (isDemo) return;
+    const result = await resolveApproval(id, "approved", userEmail);
+    if (result) {
+      setAllApprovals((prev) =>
+        prev.map((a) => (a.id === id ? result : a))
+      );
+    }
   }
 
-  function handleReject(id: string) {
-    resolveApproval(id, "rejected", userEmail);
-    setAllApprovals([...getApprovals()]);
+  async function handleReject(id: string) {
+    if (isDemo) return;
+    const result = await resolveApproval(id, "rejected", userEmail);
+    if (result) {
+      setAllApprovals((prev) =>
+        prev.map((a) => (a.id === id ? result : a))
+      );
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800" />
+        <div className="grid gap-4 lg:grid-cols-2">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-48 animate-pulse rounded-xl bg-slate-800/50" />
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
+      {/* Demo banner */}
+      {isDemo && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
+          Demo data — register an agent to see your real data
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-white">Approval Queue</h2>
@@ -58,6 +122,7 @@ export default function ApprovalsPage() {
               <ApprovalCard
                 key={approval.id}
                 approval={approval}
+                agentName={agentNames[approval.agentId] ?? approval.agentId}
                 onApprove={handleApprove}
                 onReject={handleReject}
               />
@@ -86,7 +151,11 @@ export default function ApprovalsPage() {
         {showResolved && (
           <div className="grid gap-4 lg:grid-cols-2">
             {resolved.map((approval) => (
-              <ApprovalCard key={approval.id} approval={approval} />
+              <ApprovalCard
+                key={approval.id}
+                approval={approval}
+                agentName={agentNames[approval.agentId] ?? approval.agentId}
+              />
             ))}
           </div>
         )}

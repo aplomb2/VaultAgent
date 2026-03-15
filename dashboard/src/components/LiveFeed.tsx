@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Radio } from "lucide-react";
 import clsx from "clsx";
 import type { AuditLogEntry } from "@/lib/types";
-import { getAuditLogs, getAgentName } from "@/lib/store";
 
 const actionBadge: Record<string, string> = {
   allow: "bg-emerald-500/10 text-emerald-400",
@@ -21,15 +20,21 @@ function formatTime(iso: string): string {
   });
 }
 
-export default function LiveFeed() {
+interface LiveFeedProps {
+  logs: AuditLogEntry[];
+  agentNames: Record<string, string>;
+}
+
+export default function LiveFeed({ logs, agentNames }: LiveFeedProps) {
   const [events, setEvents] = useState<AuditLogEntry[]>([]);
 
   useEffect(() => {
-    setEvents(getAuditLogs().slice(0, 20));
+    setEvents(logs.slice(0, 20));
+
+    if (logs.length === 0) return;
 
     const interval = setInterval(() => {
       setEvents((prev) => {
-        const logs = getAuditLogs();
         const randomIndex = Math.floor(Math.random() * logs.length);
         const newEntry = {
           ...logs[randomIndex],
@@ -41,7 +46,7 @@ export default function LiveFeed() {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [logs]);
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-6">
@@ -68,7 +73,7 @@ export default function LiveFeed() {
             </span>
             <span className="text-slate-600">-</span>
             <span className="truncate text-slate-400">
-              {getAgentName(event.agentId)}
+              {agentNames[event.agentId] ?? event.agentId}
             </span>
             <span
               className={clsx(

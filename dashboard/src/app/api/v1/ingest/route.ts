@@ -2,15 +2,11 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { AuditLogEntry } from "@/lib/types";
-import { pushAuditLogs, getApiKey } from "@/lib/store";
+import { createServiceClient } from "@/lib/supabase";
 
 const VALID_ACTIONS = new Set(["allow", "deny", "require_approval"]);
 
-/**
- * Validate that a value conforms to the AuditLogEntry shape.
- * Returns an error message string if invalid, or null if valid.
- */
+// Validate an incoming event object
 function validateEntry(entry: unknown): string | null {
   if (typeof entry !== "object" || entry === null) {
     return "Each event must be a non-null object";
@@ -18,15 +14,6 @@ function validateEntry(entry: unknown): string | null {
 
   const obj = entry as Record<string, unknown>;
 
-  if (typeof obj.id !== "string" || obj.id.length === 0) {
-    return "Event 'id' must be a non-empty string";
-  }
-  if (typeof obj.timestamp !== "string" || obj.timestamp.length === 0) {
-    return "Event 'timestamp' must be a non-empty string";
-  }
-  if (typeof obj.agentId !== "string" || obj.agentId.length === 0) {
-    return "Event 'agentId' must be a non-empty string";
-  }
   if (typeof obj.tool !== "string" || obj.tool.length === 0) {
     return "Event 'tool' must be a non-empty string";
   }
@@ -34,7 +21,6 @@ function validateEntry(entry: unknown): string | null {
     return "Event 'action' must be one of: allow, deny, require_approval";
   }
 
-  // Optional field type checks
   if (obj.denialReason !== undefined && typeof obj.denialReason !== "string") {
     return "Event 'denialReason' must be a string if provided";
   }
@@ -51,47 +37,48 @@ function validateEntry(entry: unknown): string | null {
   return null;
 }
 
-/**
- * Verify the Bearer token against the store API key or VAULTAGENT_API_SECRET env var.
- * Returns an error response if authentication fails, or null if OK.
- */
-function checkAuth(request: NextRequest): NextResponse | null {
-  const apiKey = process.env.VAULTAGENT_API_SECRET || getApiKey();
-  if (!apiKey) {
-    // No API key configured; skip authentication
-    return null;
-  }
-
+// Look up agent by Bearer token (api_key)
+async function authenticateAgent(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json(
-      { error: "Missing or malformed Authorization header" },
-      { status: 401 },
-    );
+    return { error: "Missing or malformed Authorization header", status: 401 };
   }
 
   const token = authHeader.slice("Bearer ".length);
-  if (token !== apiKey) {
-    return NextResponse.json(
-      { error: "Invalid API key" },
-      { status: 401 },
-    );
+  const supabase = createServiceClient();
+  const { data: agent, error } = await supabase
+    .from("agents")
+    .select("id, user_id, status")
+    .eq("api_key", token)
+    .single();
+
+  if (error || !agent) {
+    return { error: "Invalid API key", status: 401 };
   }
 
-  return null;
+  if (agent.status === "suspended") {
+    return { error: "Agent is suspended", status: 403 };
+  }
+
+  return { agent };
 }
 
 /**
  * POST /api/v1/ingest
  *
- * Accepts a single audit event or a batch: `{ events: AuditLogEntry[] }`.
- * Stores them in the in-memory audit log store.
+ * Accepts a single audit event or a batch: `{ events: [...] }`.
+ * Authenticates via agent api_key, inserts into audit_logs.
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const authError = checkAuth(request);
-  if (authError) {
-    return authError;
+  const authResult = await authenticateAgent(request);
+  if ("error" in authResult) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: authResult.status },
+    );
   }
+
+  const { agent } = authResult;
 
   let body: unknown;
   try {
@@ -116,12 +103,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   let events: unknown[];
   if (Array.isArray(payload.events)) {
     events = payload.events;
-  } else if (typeof payload.id === "string") {
-    // Single event submitted directly
+  } else if (typeof payload.tool === "string") {
     events = [payload];
   } else {
     return NextResponse.json(
-      { error: "Body must contain an 'events' array or be a single event object with an 'id'" },
+      { error: "Body must contain an 'events' array or be a single event object with a 'tool'" },
       { status: 400 },
     );
   }
@@ -144,12 +130,64 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // All valid; store them
-  const typedEvents = events as AuditLogEntry[];
-  pushAuditLogs(typedEvents);
+  const supabase = createServiceClient();
+
+  // Build rows to insert
+  const rows = events.map((e) => {
+    const ev = e as Record<string, unknown>;
+    return {
+      agent_id: agent.id,
+      user_id: agent.user_id,
+      tool: ev.tool as string,
+      action: ev.action as string,
+      input_args: ev.inputArgs ?? null,
+      input_hash: null,
+      denial_reason: ev.denialReason ?? null,
+      latency_ms: ev.latencyMs ?? null,
+      session_id: ev.sessionId ?? null,
+      metadata: ev.metadata ?? null,
+    };
+  });
+
+  const { error: insertError } = await supabase.from("audit_logs").insert(rows);
+  if (insertError) {
+    console.error("audit_logs insert error:", insertError);
+    return NextResponse.json(
+      { error: "Failed to store events" },
+      { status: 500 },
+    );
+  }
+
+  // Increment agent counters
+  const deniedCount = events.filter((e) => (e as Record<string, unknown>).action === "deny").length;
+  const { error: updateError } = await supabase.rpc("increment_agent_counters", {
+    p_agent_id: agent.id,
+    p_total: events.length,
+    p_denied: deniedCount,
+  });
+
+  // If the RPC doesn't exist, fall back to a manual update
+  if (updateError) {
+    const { data: currentAgent } = await supabase
+      .from("agents")
+      .select("total_calls, denied_calls")
+      .eq("id", agent.id)
+      .single();
+
+    if (currentAgent) {
+      await supabase
+        .from("agents")
+        .update({
+          total_calls: (currentAgent.total_calls ?? 0) + events.length,
+          denied_calls: (currentAgent.denied_calls ?? 0) + deniedCount,
+          last_seen_at: new Date().toISOString(),
+        })
+        .eq("id", agent.id);
+    }
+  }
 
   return NextResponse.json(
-    { success: true, count: typedEvents.length },
+    { success: true, count: events.length },
     { status: 200 },
   );
 }

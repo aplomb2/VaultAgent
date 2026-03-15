@@ -3,8 +3,7 @@
 import { useState } from "react";
 import { Plus, Trash2, Save, Download, Code, Table, Check } from "lucide-react";
 import clsx from "clsx";
-import type { PolicyConfig, PolicyRule, AgentPolicy } from "@/lib/types";
-import { getPolicies, updatePolicies, getAgents } from "@/lib/store";
+import type { PolicyConfig, PolicyRule, AgentPolicy, Agent } from "@/lib/types";
 
 type ViewMode = "visual" | "yaml";
 
@@ -92,13 +91,17 @@ const actionBadgeColors: Record<string, string> = {
   require_approval: "bg-amber-500/10 text-amber-400",
 };
 
-export default function PolicyEditor() {
-  const [config, setConfig] = useState<PolicyConfig>(getPolicies());
-  const [viewMode, setViewMode] = useState<ViewMode>("visual");
-  const [yamlContent, setYamlContent] = useState<string>(toYaml(config));
-  const [saveStatus, setSaveStatus] = useState<string>("");
+interface PolicyEditorProps {
+  initialConfig: PolicyConfig;
+  agents: Agent[];
+  onSave: (config: PolicyConfig) => Promise<void>;
+}
 
-  const agents = getAgents();
+export default function PolicyEditor({ initialConfig, agents, onSave }: PolicyEditorProps) {
+  const [config, setConfig] = useState<PolicyConfig>(initialConfig);
+  const [viewMode, setViewMode] = useState<ViewMode>("visual");
+  const [yamlContent, setYamlContent] = useState<string>(toYaml(initialConfig));
+  const [saveStatus, setSaveStatus] = useState<string>("");
 
   function switchView(mode: ViewMode) {
     if (mode === "yaml") {
@@ -147,7 +150,8 @@ export default function PolicyEditor() {
     setConfig(updated);
   }
 
-  function handleSave() {
+  async function handleSave() {
+    let configToSave = config;
     if (viewMode === "yaml") {
       const parsed = fromYaml(yamlContent);
       if (!parsed) {
@@ -155,13 +159,18 @@ export default function PolicyEditor() {
         setTimeout(() => setSaveStatus(""), 2000);
         return;
       }
-      updatePolicies(parsed);
+      configToSave = parsed;
       setConfig(parsed);
     } else {
-      updatePolicies(config);
       setYamlContent(toYaml(config));
     }
-    setSaveStatus("saved");
+
+    try {
+      await onSave(configToSave);
+      setSaveStatus("saved");
+    } catch {
+      setSaveStatus("error");
+    }
     setTimeout(() => setSaveStatus(""), 2000);
   }
 

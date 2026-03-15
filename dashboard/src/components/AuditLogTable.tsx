@@ -9,12 +9,16 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import clsx from "clsx";
-import type { AuditLogEntry } from "@/lib/types";
-import { getAuditLogs, getAgents, getAgentName } from "@/lib/store";
-import type { AuditLogFilters } from "@/lib/store";
+import type { Agent, AuditLogEntry } from "@/lib/types";
 
 type SortField = "timestamp" | "agentId" | "tool" | "action" | "latencyMs";
 type SortDirection = "asc" | "desc";
+
+interface AuditLogFilters {
+  agentId?: string;
+  action?: AuditLogEntry["action"];
+  search?: string;
+}
 
 const actionBadge: Record<string, string> = {
   allow: "bg-emerald-500/10 text-emerald-400",
@@ -33,22 +37,43 @@ function formatTimestamp(iso: string): string {
   });
 }
 
-export default function AuditLogTable() {
-  const agents = getAgents();
+interface AuditLogTableProps {
+  logs: AuditLogEntry[];
+  agents: Agent[];
+  agentNames: Record<string, string>;
+}
 
+export default function AuditLogTable({ logs: allLogs, agents, agentNames }: AuditLogTableProps) {
   const [filters, setFilters] = useState<AuditLogFilters>({});
   const [sortField, setSortField] = useState<SortField>("timestamp");
   const [sortDir, setSortDir] = useState<SortDirection>("desc");
 
   const logs = useMemo(() => {
-    const fetched = getAuditLogs(filters);
-    return fetched.sort((a, b) => {
+    let result = [...allLogs];
+
+    if (filters.agentId) {
+      result = result.filter((l) => l.agentId === filters.agentId);
+    }
+    if (filters.action) {
+      result = result.filter((l) => l.action === filters.action);
+    }
+    if (filters.search) {
+      const term = filters.search.toLowerCase();
+      result = result.filter(
+        (l) =>
+          l.tool.toLowerCase().includes(term) ||
+          l.denialReason?.toLowerCase().includes(term) ||
+          l.agentId.toLowerCase().includes(term)
+      );
+    }
+
+    return result.sort((a, b) => {
       const aVal = a[sortField] ?? "";
       const bVal = b[sortField] ?? "";
       const cmp = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
       return sortDir === "asc" ? cmp : -cmp;
     });
-  }, [filters, sortField, sortDir]);
+  }, [allLogs, filters, sortField, sortDir]);
 
   function toggleSort(field: SortField) {
     if (sortField === field) {
@@ -85,7 +110,7 @@ export default function AuditLogTable() {
       ];
       const rows = logs.map((l) => [
         l.timestamp,
-        getAgentName(l.agentId),
+        agentNames[l.agentId] ?? l.agentId,
         l.tool,
         l.action,
         l.denialReason ?? "",
@@ -223,7 +248,7 @@ export default function AuditLogTable() {
                   {formatTimestamp(log.timestamp)}
                 </td>
                 <td className="px-5 py-2.5 text-xs text-slate-300">
-                  {getAgentName(log.agentId)}
+                  {agentNames[log.agentId] ?? log.agentId}
                 </td>
                 <td className="px-5 py-2.5 font-mono text-xs text-slate-300">
                   {log.tool}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import {
   Bot,
   Plus,
@@ -14,6 +15,7 @@ import {
 import clsx from "clsx";
 import type { Agent } from "@/lib/types";
 import { getAgents, addAgent } from "@/lib/store";
+import { getDemoAgents } from "@/lib/demo-data";
 
 const statusBadge: Record<Agent["status"], string> = {
   active: "bg-emerald-500/10 text-emerald-400",
@@ -37,19 +39,47 @@ function formatDate(iso: string): string {
 }
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>(getAgents());
+  const { data: session } = useSession();
+  const userId = (session?.user as Record<string, unknown>)?.id as string;
+
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isDemo, setIsDemo] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  function handleRegister() {
-    if (!newName.trim()) return;
-    const agent = addAgent(newName.trim());
-    setAgents([...getAgents()]);
-    setNewName("");
-    setShowForm(false);
-    setRevealedKeys((prev) => new Set(prev).add(agent.id));
+  useEffect(() => {
+    if (!userId) return;
+
+    async function load() {
+      const data = await getAgents(userId);
+      if (data.length === 0) {
+        setAgents(getDemoAgents());
+        setIsDemo(true);
+      } else {
+        setAgents(data);
+        setIsDemo(false);
+      }
+      setLoading(false);
+    }
+
+    load();
+  }, [userId]);
+
+  async function handleRegister() {
+    if (!newName.trim() || !userId) return;
+    try {
+      const agent = await addAgent(userId, newName.trim());
+      setAgents((prev) => [agent, ...prev]);
+      setNewName("");
+      setShowForm(false);
+      setRevealedKeys((prev) => new Set(prev).add(agent.id));
+      setIsDemo(false);
+    } catch (err) {
+      console.error("Failed to register agent:", err);
+    }
   }
 
   function toggleKeyVisibility(id: string) {
@@ -67,20 +97,24 @@ export default function AgentsPage() {
     setTimeout(() => setCopiedId(null), 2000);
   }
 
-  function regenerateKey(agentId: string) {
-    const newKey = `va_sk_${Array.from({ length: 20 }, () =>
-      "abcdefghijklmnopqrstuvwxyz0123456789".charAt(
-        Math.floor(Math.random() * 36)
-      )
-    ).join("")}`;
-    setAgents((prev) =>
-      prev.map((a) => (a.id === agentId ? { ...a, apiKey: newKey } : a))
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800" />
+        <div className="h-64 animate-pulse rounded-xl bg-slate-800/50" />
+      </div>
     );
-    setRevealedKeys((prev) => new Set(prev).add(agentId));
   }
 
   return (
     <div className="space-y-6">
+      {/* Demo banner */}
+      {isDemo && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
+          Demo data — register an agent to see your real data
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -228,14 +262,7 @@ export default function AgentsPage() {
                   )}
                 </td>
                 <td className="px-5 py-3.5">
-                  <button
-                    onClick={() => regenerateKey(agent.id)}
-                    className="flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
-                    title="Regenerate API key"
-                  >
-                    <RefreshCw className="h-3 w-3" />
-                    Regenerate
-                  </button>
+                  {/* Regenerate removed — keys are managed in DB */}
                 </td>
               </tr>
             ))}

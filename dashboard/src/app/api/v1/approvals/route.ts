@@ -2,94 +2,91 @@
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { Approval } from "@/lib/types";
-import {
-  getApprovals,
-  getPendingApprovals,
-  pushApproval,
-  resolveApproval,
-} from "@/lib/store";
+import { createServiceClient } from "@/lib/supabase";
+import { auth } from "@/lib/auth";
 
-const VALID_STATUSES = new Set(["pending", "approved", "rejected"]);
-
-/**
- * Verify Bearer token against VAULTAGENT_API_SECRET.
- * Returns an error response if authentication fails, or null if OK.
- */
-function checkApiAuth(request: NextRequest): NextResponse | null {
-  const secret = process.env.VAULTAGENT_API_SECRET;
-  if (!secret) return null;
-
+// Look up agent by Bearer token (api_key)
+async function authenticateAgent(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json(
-      { error: "Missing or malformed Authorization header" },
-      { status: 401 },
-    );
+    return { error: "Missing or malformed Authorization header", status: 401 };
   }
 
-  if (authHeader.slice("Bearer ".length) !== secret) {
-    return NextResponse.json(
-      { error: "Invalid API key" },
-      { status: 401 },
-    );
+  const token = authHeader.slice("Bearer ".length);
+  const supabase = createServiceClient();
+  const { data: agent, error } = await supabase
+    .from("agents")
+    .select("id, user_id, status")
+    .eq("api_key", token)
+    .single();
+
+  if (error || !agent) {
+    return { error: "Invalid API key", status: 401 };
   }
 
-  return null;
-}
-
-/**
- * Generate a random approval ID.
- */
-function generateId(): string {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return "appr-" + Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .slice(0, 12);
+  return { agent };
 }
 
 /**
  * GET /api/v1/approvals
  *
- * List all approvals. Supports optional `?status=pending` query filter.
+ * List approvals for agent. Supports optional `?status=pending` query filter.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authError = checkApiAuth(request);
-  if (authError) return authError;
-
-  const { searchParams } = new URL(request.url);
-  const statusFilter = searchParams.get("status");
-
-  if (statusFilter && !VALID_STATUSES.has(statusFilter)) {
+  const authResult = await authenticateAgent(request);
+  if ("error" in authResult) {
     return NextResponse.json(
-      { error: "Invalid status filter. Must be one of: pending, approved, rejected" },
-      { status: 400 },
+      { error: authResult.error },
+      { status: authResult.status },
     );
   }
 
-  let filtered: Approval[];
-  if (statusFilter === "pending") {
-    filtered = getPendingApprovals();
-  } else if (statusFilter) {
-    filtered = getApprovals().filter((a: Approval) => a.status === statusFilter);
-  } else {
-    filtered = getApprovals();
+  const { agent } = authResult;
+  const supabase = createServiceClient();
+  const { searchParams } = new URL(request.url);
+  const statusFilter = searchParams.get("status");
+
+  let query = supabase
+    .from("approvals")
+    .select("*")
+    .eq("agent_id", agent.id)
+    .order("created_at", { ascending: false });
+
+  if (statusFilter) {
+    const valid = new Set(["pending", "approved", "rejected"]);
+    if (!valid.has(statusFilter)) {
+      return NextResponse.json(
+        { error: "Invalid status filter. Must be one of: pending, approved, rejected" },
+        { status: 400 },
+      );
+    }
+    query = query.eq("status", statusFilter);
   }
 
-  return NextResponse.json({ approvals: filtered, count: filtered.length });
+  const { data, error } = await query;
+  if (error) {
+    return NextResponse.json({ error: "Failed to fetch approvals" }, { status: 500 });
+  }
+
+  return NextResponse.json({ approvals: data ?? [], count: data?.length ?? 0 });
 }
 
 /**
  * POST /api/v1/approvals
  *
  * Create a new approval request.
- * Body: `{ agentId, tool, inputArgs }`
+ * Body: `{ tool, inputArgs }`
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const authError = checkApiAuth(request);
-  if (authError) return authError;
+  const authResult = await authenticateAgent(request);
+  if ("error" in authResult) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: authResult.status },
+    );
+  }
+
+  const { agent } = authResult;
 
   let body: unknown;
   try {
@@ -110,13 +107,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const obj = body as Record<string, unknown>;
 
-  if (typeof obj.agentId !== "string" || obj.agentId.length === 0) {
-    return NextResponse.json(
-      { error: "'agentId' must be a non-empty string" },
-      { status: 400 },
-    );
-  }
-
   if (typeof obj.tool !== "string" || obj.tool.length === 0) {
     return NextResponse.json(
       { error: "'tool' must be a non-empty string" },
@@ -131,29 +121,39 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const approval: Approval = {
-    id: generateId(),
-    agentId: obj.agentId,
-    tool: obj.tool,
-    inputArgs: obj.inputArgs as Record<string, unknown>,
-    status: "pending",
-    createdAt: new Date().toISOString(),
-  };
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("approvals")
+    .insert({
+      agent_id: agent.id,
+      user_id: agent.user_id,
+      tool: obj.tool,
+      input_args: obj.inputArgs,
+      status: "pending",
+    })
+    .select()
+    .single();
 
-  pushApproval(approval);
+  if (error) {
+    console.error("approval insert error:", error);
+    return NextResponse.json({ error: "Failed to create approval" }, { status: 500 });
+  }
 
-  return NextResponse.json(approval, { status: 201 });
+  return NextResponse.json(data, { status: 201 });
 }
 
 /**
  * PATCH /api/v1/approvals
  *
- * Resolve an existing approval.
- * Body: `{ id, status: 'approved' | 'rejected', resolvedBy }`
+ * Resolve an existing approval. Requires dashboard auth session.
+ * Body: `{ id, status: 'approved' | 'rejected' }`
  */
 export async function PATCH(request: NextRequest): Promise<NextResponse> {
-  const authError = checkApiAuth(request);
-  if (authError) return authError;
+  // PATCH requires dashboard session auth, not API key
+  const session = await auth();
+  if (!session?.user?.email) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
 
   let body: unknown;
   try {
@@ -188,17 +188,27 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  if (typeof obj.resolvedBy !== "string" || obj.resolvedBy.length === 0) {
-    return NextResponse.json(
-      { error: "'resolvedBy' must be a non-empty string" },
-      { status: 400 },
-    );
-  }
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("approvals")
+    .update({
+      status: obj.status,
+      resolved_at: new Date().toISOString(),
+      resolved_by: session.user.email,
+    })
+    .eq("id", obj.id)
+    .eq("status", "pending")
+    .select()
+    .single();
 
-  const resolved = resolveApproval(obj.id, obj.status, obj.resolvedBy);
-  if (!resolved) {
-    // Could be not found or already resolved
-    const existing = getApprovals().find((a: Approval) => a.id === obj.id);
+  if (error || !data) {
+    // Check if it exists
+    const { data: existing } = await supabase
+      .from("approvals")
+      .select("id, status")
+      .eq("id", obj.id)
+      .single();
+
     if (!existing) {
       return NextResponse.json(
         { error: `Approval with id '${obj.id}' not found` },
@@ -211,5 +221,5 @@ export async function PATCH(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  return NextResponse.json(resolved);
+  return NextResponse.json(data);
 }

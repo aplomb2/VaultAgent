@@ -3,10 +3,10 @@
 import { CheckCircle, XCircle, Clock, User, Terminal } from "lucide-react";
 import clsx from "clsx";
 import type { Approval } from "@/lib/types";
-import { getAgentName } from "@/lib/store";
 
 interface ApprovalCardProps {
   approval: Approval;
+  agentName: string;
   onApprove?: (id: string) => void;
   onReject?: (id: string) => void;
 }
@@ -44,6 +44,7 @@ const statusConfig = {
 
 export default function ApprovalCard({
   approval,
+  agentName,
   onApprove,
   onReject,
 }: ApprovalCardProps) {
@@ -82,7 +83,7 @@ export default function ApprovalCard({
       <div className="mb-4 flex items-center gap-4 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
           <User className="h-3.5 w-3.5" />
-          {getAgentName(approval.agentId)}
+          {agentName}
         </span>
         <span>{formatTimestamp(approval.createdAt)}</span>
       </div>

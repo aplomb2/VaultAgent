@@ -1,189 +1,93 @@
-// API route: Policy configuration fetch and update
+// API route: Policy configuration fetch
 
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import type { PolicyConfig, AgentPolicy } from "@/lib/types";
-import { getPolicies, updatePolicies } from "@/lib/store";
+import { createServiceClient } from "@/lib/supabase";
 
-/**
- * Verify Bearer token against VAULTAGENT_API_SECRET.
- * Returns an error response if authentication fails, or null if OK.
- */
-function checkApiAuth(request: NextRequest): NextResponse | null {
-  const secret = process.env.VAULTAGENT_API_SECRET;
-  if (!secret) return null;
-
+// Look up agent by Bearer token (api_key)
+async function authenticateAgent(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return NextResponse.json(
-      { error: "Missing or malformed Authorization header" },
-      { status: 401 },
-    );
+    return { error: "Missing or malformed Authorization header", status: 401 };
   }
 
-  if (authHeader.slice("Bearer ".length) !== secret) {
-    return NextResponse.json(
-      { error: "Invalid API key" },
-      { status: 401 },
-    );
+  const token = authHeader.slice("Bearer ".length);
+  const supabase = createServiceClient();
+  const { data: agent, error } = await supabase
+    .from("agents")
+    .select("id, user_id")
+    .eq("api_key", token)
+    .single();
+
+  if (error || !agent) {
+    return { error: "Invalid API key", status: 401 };
   }
 
-  return null;
-}
-
-/**
- * Validate a policy config object.
- * Returns an error message if invalid, or null if valid.
- */
-function validatePolicyConfig(body: unknown): string | null {
-  if (typeof body !== "object" || body === null) {
-    return "Policy config must be a JSON object";
-  }
-
-  const obj = body as Record<string, unknown>;
-
-  if (typeof obj.version !== "string" || obj.version.length === 0) {
-    return "'version' must be a non-empty string";
-  }
-
-  if (typeof obj.defaultAction !== "string" || obj.defaultAction.length === 0) {
-    return "'defaultAction' must be a non-empty string";
-  }
-
-  if (!Array.isArray(obj.agents)) {
-    return "'agents' must be an array";
-  }
-
-  for (let i = 0; i < obj.agents.length; i++) {
-    const agentError = validateAgentPolicy(obj.agents[i] as unknown, i);
-    if (agentError) {
-      return agentError;
-    }
-  }
-
-  return null;
-}
-
-/**
- * Validate a single agent policy entry within the agents array.
- */
-function validateAgentPolicy(agent: unknown, index: number): string | null {
-  if (typeof agent !== "object" || agent === null) {
-    return `agents[${index}] must be a non-null object`;
-  }
-
-  const obj = agent as Record<string, unknown>;
-
-  if (typeof obj.agentId !== "string" || obj.agentId.length === 0) {
-    return `agents[${index}].agentId must be a non-empty string`;
-  }
-
-  // Validate optional rules array
-  if (obj.rules !== undefined) {
-    if (!Array.isArray(obj.rules)) {
-      return `agents[${index}].rules must be an array if provided`;
-    }
-    for (let j = 0; j < obj.rules.length; j++) {
-      const rule = obj.rules[j] as Record<string, unknown> | null;
-      if (typeof rule !== "object" || rule === null) {
-        return `agents[${index}].rules[${j}] must be a non-null object`;
-      }
-      if (typeof rule.tool !== "string" || rule.tool.length === 0) {
-        return `agents[${index}].rules[${j}].tool must be a non-empty string`;
-      }
-      const validActions = new Set(["allow", "deny", "require_approval"]);
-      if (typeof rule.action !== "string" || !validActions.has(rule.action)) {
-        return `agents[${index}].rules[${j}].action must be one of: allow, deny, require_approval`;
-      }
-    }
-  }
-
-  // Validate optional string-array fields
-  const arrayFields = ["allowedTools", "deniedTools", "requireApproval"] as const;
-  for (const field of arrayFields) {
-    if (obj[field] !== undefined) {
-      if (!Array.isArray(obj[field])) {
-        return `agents[${index}].${field} must be an array if provided`;
-      }
-      const arr = obj[field] as unknown[];
-      if (arr.some((item) => typeof item !== "string")) {
-        return `agents[${index}].${field} must contain only strings`;
-      }
-    }
-  }
-
-  if (obj.rateLimit !== undefined && typeof obj.rateLimit !== "number") {
-    return `agents[${index}].rateLimit must be a number if provided`;
-  }
-
-  return null;
+  return { agent };
 }
 
 /**
  * GET /api/v1/policy
  *
- * Returns the current policy config. Optionally filter by agentId query param.
+ * Returns the policy config for the agent's owner.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const authError = checkApiAuth(request);
-  if (authError) return authError;
+  const authResult = await authenticateAgent(request);
+  if ("error" in authResult) {
+    return NextResponse.json(
+      { error: authResult.error },
+      { status: authResult.status },
+    );
+  }
 
+  const { agent } = authResult;
+  const supabase = createServiceClient();
+
+  const { data } = await supabase
+    .from("policies")
+    .select("*")
+    .eq("user_id", agent.user_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!data) {
+    return NextResponse.json({
+      version: "1.0.0",
+      defaultAction: "deny",
+      agents: [],
+    });
+  }
+
+  const config = data.config as Record<string, unknown>;
+
+  // Optionally filter to this specific agent
   const { searchParams } = new URL(request.url);
-  const agentId = searchParams.get("agentId");
+  const agentIdFilter = searchParams.get("agentId");
 
-  const policy = getPolicies();
-
-  if (agentId) {
-    const agentPolicy: AgentPolicy | undefined = policy.agents.find(
-      (a: AgentPolicy) => a.agentId === agentId,
+  if (agentIdFilter) {
+    const agentPolicies = (config.agents as Array<Record<string, unknown>>) ?? [];
+    const agentPolicy = agentPolicies.find(
+      (a) => a.agentId === agentIdFilter,
     );
 
     if (!agentPolicy) {
       return NextResponse.json(
-        { error: `No policy found for agentId '${agentId}'` },
+        { error: `No policy found for agentId '${agentIdFilter}'` },
         { status: 404 },
       );
     }
 
     return NextResponse.json({
-      version: policy.version,
-      defaultAction: policy.defaultAction,
+      version: data.version ?? config.version,
+      defaultAction: config.defaultAction,
       agent: agentPolicy,
     });
   }
 
-  return NextResponse.json(policy);
-}
-
-/**
- * PUT /api/v1/policy
- *
- * Replace the entire policy config with the provided JSON body.
- */
-export async function PUT(request: NextRequest): Promise<NextResponse> {
-  const authError = checkApiAuth(request);
-  if (authError) return authError;
-
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 },
-    );
-  }
-
-  const validationError = validatePolicyConfig(body);
-  if (validationError) {
-    return NextResponse.json(
-      { error: validationError },
-      { status: 400 },
-    );
-  }
-
-  const config = body as PolicyConfig;
-  updatePolicies(config);
-
-  return NextResponse.json(getPolicies());
+  return NextResponse.json({
+    version: data.version ?? config.version,
+    defaultAction: config.defaultAction,
+    agents: config.agents ?? [],
+  });
 }

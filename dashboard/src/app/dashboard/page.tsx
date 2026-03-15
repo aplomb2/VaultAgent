@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { useSession } from "next-auth/react";
 import {
   BarChart,
   Bar,
@@ -23,19 +24,85 @@ import {
   getStats,
   getAuditLogs,
   getHourlyVolume,
-  getAgentName,
+  getAgentNames,
 } from "@/lib/store";
+import {
+  getDemoStats,
+  getDemoAuditLogs,
+  getDemoHourlyVolume,
+  getDemoAgentNames,
+} from "@/lib/demo-data";
+import type { Stats, AuditLogEntry } from "@/lib/types";
 
 export default function DashboardOverview() {
-  const stats = getStats();
-  const hourlyData = useMemo(() => getHourlyVolume(), []);
-  const recentDenied = useMemo(
-    () => getAuditLogs({ action: "deny" }).slice(0, 8),
-    []
-  );
+  const { data: session } = useSession();
+  const userId = (session?.user as Record<string, unknown>)?.id as string;
+
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [hourlyData, setHourlyData] = useState<Array<{ hour: string; allowed: number; denied: number }>>([]);
+  const [recentDenied, setRecentDenied] = useState<AuditLogEntry[]>([]);
+  const [allLogs, setAllLogs] = useState<AuditLogEntry[]>([]);
+  const [agentNames, setAgentNames] = useState<Record<string, string>>({});
+  const [isDemo, setIsDemo] = useState(false);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    async function load() {
+      const [s, h, logs, names] = await Promise.all([
+        getStats(userId),
+        getHourlyVolume(userId),
+        getAuditLogs(userId, { action: "deny" }),
+        getAgentNames(userId),
+      ]);
+
+      // If user has no data, show demo
+      if (s.totalCalls === 0 && logs.length === 0) {
+        setStats(getDemoStats());
+        setHourlyData(getDemoHourlyVolume());
+        const demoLogs = getDemoAuditLogs();
+        setRecentDenied(demoLogs.filter((l) => l.action === "deny").slice(0, 8));
+        setAllLogs(demoLogs);
+        setAgentNames(getDemoAgentNames());
+        setIsDemo(true);
+      } else {
+        setStats(s);
+        setHourlyData(h);
+        setRecentDenied(logs.slice(0, 8));
+        // Fetch all logs for the live feed
+        const allData = await getAuditLogs(userId);
+        setAllLogs(allData);
+        setAgentNames(names);
+        setIsDemo(false);
+      }
+    }
+
+    load();
+  }, [userId]);
+
+  if (!stats) {
+    return (
+      <div className="space-y-6">
+        <div className="h-8 w-48 animate-pulse rounded-lg bg-slate-800" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="h-28 animate-pulse rounded-xl bg-slate-800/50" />
+          ))}
+        </div>
+        <div className="h-80 animate-pulse rounded-xl bg-slate-800/50" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Demo banner */}
+      {isDemo && (
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
+          Demo data — register an agent to see your real data
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-white">Overview</h2>
@@ -155,7 +222,7 @@ export default function DashboardOverview() {
                     {log.tool}
                   </p>
                   <p className="truncate text-xs text-slate-500">
-                    {getAgentName(log.agentId)}
+                    {agentNames[log.agentId] ?? log.agentId}
                     {log.denialReason ? ` \u2014 ${log.denialReason}` : ""}
                   </p>
                 </div>
@@ -171,7 +238,7 @@ export default function DashboardOverview() {
       </div>
 
       {/* Live feed */}
-      <LiveFeed />
+      <LiveFeed logs={allLogs} agentNames={agentNames} />
     </div>
   );
 }
