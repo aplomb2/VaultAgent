@@ -1,34 +1,16 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Custom dark theme variables */
-:root {
-  --background: #020617;
-  --foreground: #f8fafc;
-  --card: #0f172a;
-  --card-foreground: #f8fafc;
-  --border: #1e293b;
-  --muted: #1e293b;
-  --muted-foreground: #94a3b8;
-  --accent: #10b981;
-  --accent-foreground: #022c22;
-  --ring: #10b981;
-}
-
-/* Base styles */
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
+/* Force dark background */
+html, body {
+  background-color: #020617;
+  color: #f8fafc;
 }
 
 html {
   scroll-behavior: smooth;
   color-scheme: dark;
-}
-
-body {
-  background-color: var(--background);
-  color: var(--foreground);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

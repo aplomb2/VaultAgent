@@ -67,6 +67,12 @@ function Navbar() {
             GitHub
           </a>
           <a
+            href="/login"
+            className="text-sm text-slate-400 transition hover:text-white"
+          >
+            Sign In
+          </a>
+          <a
             href="/dashboard"
             className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-400"
           >
