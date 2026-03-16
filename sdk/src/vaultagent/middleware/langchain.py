@@ -109,8 +109,8 @@ def _wrap_single_tool(
         return await original_arun(*args, **kwargs)
 
     # Monkey-patch the copies.
-    wrapped_tool._run = guarded_run  # type: ignore[assignment]
-    wrapped_tool._arun = guarded_arun  # type: ignore[assignment]
+    wrapped_tool._run = guarded_run
+    wrapped_tool._arun = guarded_arun
 
     return wrapped_tool
 

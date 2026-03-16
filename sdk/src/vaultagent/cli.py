@@ -7,7 +7,11 @@ import json
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import NoReturn
+from typing import TYPE_CHECKING, Any, NoReturn
+
+if TYPE_CHECKING:
+    from vaultagent.core.decision import Decision
+    from vaultagent.core.policy import Action
 
 
 # ANSI color codes
@@ -238,10 +242,10 @@ def cmd_test(args: argparse.Namespace) -> int:
 
 
 def _test_constraints(
-    engine: object,
+    engine: Decision,
     agent_id: str,
     tool_name: str,
-    constraints: dict[str, object],
+    constraints: dict[str, Any],
     passed_ref: list[int],
     failed_ref: list[int],
 ) -> None:
@@ -318,13 +322,13 @@ def _test_constraints(
 
 
 def _run_test_case(
-    engine: object,
+    engine: Decision,
     agent_id: str,
     tool_name: str,
-    expected_action: object,
+    expected_action: Action,
 ) -> bool:
     """Run a single test case and return whether it passed."""
-    result = engine.evaluate(agent_id, tool_name)  # type: ignore[union-attr]
+    result = engine.evaluate(agent_id, tool_name)
     return result.action == expected_action
 
 
@@ -352,7 +356,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
                     continue
 
                 try:
-                    entry: dict = json.loads(line)
+                    entry: dict[str, Any] = json.loads(line)
                 except json.JSONDecodeError as exc:
                     print(f"  {_red('✗')} Malformed JSON line: {exc}")
                     continue
@@ -374,7 +378,7 @@ def cmd_logs(args: argparse.Namespace) -> int:
     return 0
 
 
-def _print_log_entry(entry: dict) -> None:
+def _print_log_entry(entry: dict[str, Any]) -> None:
     """Pretty-print a single audit log entry with colors."""
     timestamp = entry.get("timestamp", "?")
     agent_id = entry.get("agent_id", "?")
