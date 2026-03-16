@@ -328,7 +328,6 @@ export async function getUserByEmail(
 
 // ── Row Mappers ──────────────────────────────────────────────────────────────
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 function mapAgent(row: any): Agent {
   return {
     id: row.id,
@@ -368,4 +367,3 @@ function mapApproval(row: any): Approval {
     resolvedBy: row.resolved_by ?? undefined,
   };
 }
-/* eslint-enable @typescript-eslint/no-explicit-any */

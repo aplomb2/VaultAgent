@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import logging
 import time
 from pathlib import Path
 from typing import Any, Callable, TypeVar
@@ -11,6 +12,8 @@ from vaultagent.core.audit import AuditLogger
 from vaultagent.core.decision import Decision, DecisionResult
 from vaultagent.core.policy import Action, Policy
 from vaultagent.core.rate_limit import RateLimiter
+
+logger = logging.getLogger("vaultagent")
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -96,22 +99,6 @@ class VaultAgent:
         self._session_id = session_id
         self._cloud_reporter = None
 
-        # Load policy
-        if isinstance(policy, Policy):
-            self._policy = policy
-        elif isinstance(policy, (str, Path)):
-            self._policy = Policy.from_file(policy)
-        elif api_key:
-            # TODO: Fetch policy from cloud
-            self._policy = Policy()  # Empty policy, will be fetched
-        else:
-            # Default: deny everything
-            self._policy = Policy()
-
-        # Initialize components
-        self._decision = Decision(self._policy)
-        self._rate_limiter = RateLimiter()
-
         # Setup cloud reporter if API key provided
         if api_key:
             try:
@@ -119,6 +106,21 @@ class VaultAgent:
                 self._cloud_reporter = CloudReporter(api_key=api_key)
             except ImportError:
                 pass
+
+        # Load policy
+        if isinstance(policy, Policy):
+            self._policy = policy
+        elif isinstance(policy, (str, Path)):
+            self._policy = Policy.from_file(policy)
+        elif api_key and self._cloud_reporter:
+            self._policy = self._fetch_cloud_policy()
+        else:
+            # Default: deny everything
+            self._policy = Policy()
+
+        # Initialize components
+        self._decision = Decision(self._policy)
+        self._rate_limiter = RateLimiter()
 
         # Audit logger
         self._audit = AuditLogger(
@@ -245,3 +247,16 @@ class VaultAgent:
         """Update the policy at runtime."""
         self._policy = policy
         self._decision = Decision(policy)
+
+    def _fetch_cloud_policy(self) -> Policy:
+        """Fetch policy from VaultAgent Cloud, falling back to default deny."""
+        assert self._cloud_reporter is not None
+        agent_id = self._default_agent_id or ""
+        try:
+            data = self._cloud_reporter.fetch_policy(agent_id)
+            if data:
+                return Policy.from_cloud_response(data)
+            logger.warning("No policy returned from cloud, defaulting to deny-all")
+        except Exception as e:
+            logger.error(f"Failed to fetch cloud policy: {e}")
+        return Policy()

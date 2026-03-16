@@ -142,6 +142,79 @@ class Policy:
             default_log_level=default_log_level,
         )
 
+    @classmethod
+    def from_cloud_response(cls, data: dict[str, Any]) -> Policy:
+        """Parse a cloud API response into a Policy object.
+
+        The cloud API returns camelCase keys and agents as an array,
+        unlike the YAML format which uses snake_case and agents as a dict.
+        """
+        default_action = Action(data.get("defaultAction", "deny"))
+
+        agents: dict[str, AgentPolicy] = {}
+
+        # Cloud returns agents as an array with agentId field
+        agents_list = data.get("agents", [])
+        if isinstance(agents_list, list):
+            for agent_data in agents_list:
+                agent_id = agent_data.get("agentId", "")
+                if not agent_id:
+                    continue
+                rules: list[PolicyRule] = []
+                for rule_data in agent_data.get("rules", []):
+                    rules.append(
+                        PolicyRule(
+                            tool=rule_data["tool"],
+                            action=Action(rule_data["action"]),
+                            constraints=rule_data.get("constraints", {}),
+                        )
+                    )
+                rate_data = agent_data.get("rateLimit", {}) or {}
+                rate_limits = RateLimit(
+                    max_calls_per_minute=rate_data.get("max_calls_per_minute"),
+                    max_calls_per_hour=rate_data.get("max_calls_per_hour"),
+                    max_calls_per_day=rate_data.get("max_calls_per_day"),
+                )
+                agents[agent_id] = AgentPolicy(
+                    agent_id=agent_id,
+                    description=agent_data.get("description", ""),
+                    rules=rules,
+                    rate_limits=rate_limits,
+                )
+
+        # Single agent response (when agentId filter is used)
+        single_agent = data.get("agent")
+        if single_agent and isinstance(single_agent, dict):
+            agent_id = single_agent.get("agentId", "")
+            if agent_id:
+                rules = []
+                for rule_data in single_agent.get("rules", []):
+                    rules.append(
+                        PolicyRule(
+                            tool=rule_data["tool"],
+                            action=Action(rule_data["action"]),
+                            constraints=rule_data.get("constraints", {}),
+                        )
+                    )
+                rate_data = single_agent.get("rateLimit", {}) or {}
+                rate_limits = RateLimit(
+                    max_calls_per_minute=rate_data.get("max_calls_per_minute"),
+                    max_calls_per_hour=rate_data.get("max_calls_per_hour"),
+                    max_calls_per_day=rate_data.get("max_calls_per_day"),
+                )
+                agents[agent_id] = AgentPolicy(
+                    agent_id=agent_id,
+                    description=single_agent.get("description", ""),
+                    rules=rules,
+                    rate_limits=rate_limits,
+                )
+
+        return cls(
+            version=data.get("version", "1.0"),
+            agents=agents,
+            default_action=default_action,
+        )
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize policy to a dict (for API sync)."""
         agents_dict: dict[str, Any] = {}

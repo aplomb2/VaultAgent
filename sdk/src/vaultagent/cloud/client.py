@@ -65,7 +65,7 @@ class CloudReporter:
             client = self._get_client()
             response = client.get(
                 "/api/v1/policy",
-                params={"agent_id": agent_id},
+                params={"agentId": agent_id},
             )
             if response.status_code == 200:
                 return response.json()  # type: ignore[no-any-return]

@@ -246,14 +246,22 @@ docker compose up -d
 ### Option 2: Manual
 
 ```bash
-# Dashboard
+# 1. Set up Supabase database
+#    Create a project at https://supabase.com, then run:
+#    supabase/schema.sql in the SQL Editor
+
+# 2. Configure environment
 cd dashboard
+cp .env.example .env
+# Fill in your Supabase and OAuth credentials in .env
+
+# 3. Start the dashboard
 npm install
 npm run build
 npm start
 # → http://localhost:3000
 
-# SDK (Python)
+# 4. SDK (Python)
 pip install vaultagent
 
 # Point SDK to your self-hosted dashboard
