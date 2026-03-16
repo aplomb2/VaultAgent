@@ -9,6 +9,7 @@ import {
   Shield,
   ClipboardCheck,
   ScrollText,
+  CreditCard,
   Lock,
   LogOut,
 } from "lucide-react";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/dashboard/policies", label: "Policies", icon: Shield },
   { href: "/dashboard/approvals", label: "Approvals", icon: ClipboardCheck },
   { href: "/dashboard/logs", label: "Audit Logs", icon: ScrollText },
+  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
 ];
 
 export default function Sidebar() {

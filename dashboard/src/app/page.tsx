@@ -557,7 +557,13 @@ function Pricing() {
               </ul>
 
               <a
-                href="#"
+                href={
+                  tier.cta === "Contact Sales"
+                    ? "mailto:hello@vaultagent.dev"
+                    : tier.name === "Free"
+                      ? "/dashboard"
+                      : `/login?callbackUrl=${encodeURIComponent(`/dashboard/billing?checkout=${tier.name.toLowerCase()}`)}`
+                }
                 className={`block rounded-lg py-2.5 text-center text-sm font-semibold transition ${
                   tier.highlighted
                     ? "bg-emerald-500 text-white hover:bg-emerald-400"

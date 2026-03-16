@@ -10,7 +10,6 @@ import {
   resolveApproval,
   getAgentNames,
 } from "@/lib/store";
-import { getDemoApprovals, getDemoAgentNames } from "@/lib/demo-data";
 
 export default function ApprovalsPage() {
   const { data: session } = useSession();
@@ -19,7 +18,6 @@ export default function ApprovalsPage() {
   const [allApprovals, setAllApprovals] = useState<Approval[]>([]);
   const [agentNames, setAgentNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
 
   useEffect(() => {
@@ -31,15 +29,8 @@ export default function ApprovalsPage() {
         getAgentNames(userId),
       ]);
 
-      if (approvals.length === 0) {
-        setAllApprovals(getDemoApprovals());
-        setAgentNames(getDemoAgentNames());
-        setIsDemo(true);
-      } else {
-        setAllApprovals(approvals);
-        setAgentNames(names);
-        setIsDemo(false);
-      }
+      setAllApprovals(approvals);
+      setAgentNames(names);
       setLoading(false);
     }
 
@@ -52,7 +43,6 @@ export default function ApprovalsPage() {
   const userEmail = session?.user?.email ?? "unknown@vault.dev";
 
   async function handleApprove(id: string) {
-    if (isDemo) return;
     const result = await resolveApproval(id, "approved", userEmail);
     if (result) {
       setAllApprovals((prev) =>
@@ -62,7 +52,6 @@ export default function ApprovalsPage() {
   }
 
   async function handleReject(id: string) {
-    if (isDemo) return;
     const result = await resolveApproval(id, "rejected", userEmail);
     if (result) {
       setAllApprovals((prev) =>
@@ -86,13 +75,6 @@ export default function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Demo banner */}
-      {isDemo && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
-          Demo data — register an agent to see your real data
-        </div>
-      )}
-
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-white">Approval Queue</h2>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useSession } from "next-auth/react";
 import {
   BarChart,
@@ -26,12 +26,6 @@ import {
   getHourlyVolume,
   getAgentNames,
 } from "@/lib/store";
-import {
-  getDemoStats,
-  getDemoAuditLogs,
-  getDemoHourlyVolume,
-  getDemoAgentNames,
-} from "@/lib/demo-data";
 import type { Stats, AuditLogEntry } from "@/lib/types";
 
 export default function DashboardOverview() {
@@ -43,42 +37,35 @@ export default function DashboardOverview() {
   const [recentDenied, setRecentDenied] = useState<AuditLogEntry[]>([]);
   const [allLogs, setAllLogs] = useState<AuditLogEntry[]>([]);
   const [agentNames, setAgentNames] = useState<Record<string, string>>({});
-  const [isDemo, setIsDemo] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     if (!userId) return;
 
-    async function load() {
-      const [s, h, logs, names] = await Promise.all([
-        getStats(userId),
-        getHourlyVolume(userId),
-        getAuditLogs(userId, { action: "deny" }),
-        getAgentNames(userId),
-      ]);
+    const [s, h, logs, names] = await Promise.all([
+      getStats(userId),
+      getHourlyVolume(userId),
+      getAuditLogs(userId, { action: "deny" }),
+      getAgentNames(userId),
+    ]);
 
-      // If user has no data, show demo
-      if (s.totalCalls === 0 && logs.length === 0) {
-        setStats(getDemoStats());
-        setHourlyData(getDemoHourlyVolume());
-        const demoLogs = getDemoAuditLogs();
-        setRecentDenied(demoLogs.filter((l) => l.action === "deny").slice(0, 8));
-        setAllLogs(demoLogs);
-        setAgentNames(getDemoAgentNames());
-        setIsDemo(true);
-      } else {
-        setStats(s);
-        setHourlyData(h);
-        setRecentDenied(logs.slice(0, 8));
-        // Fetch all logs for the live feed
-        const allData = await getAuditLogs(userId);
-        setAllLogs(allData);
-        setAgentNames(names);
-        setIsDemo(false);
-      }
-    }
-
-    load();
+    setStats(s);
+    setHourlyData(h);
+    setRecentDenied(logs.slice(0, 8));
+    const allData = await getAuditLogs(userId);
+    setAllLogs(allData);
+    setAgentNames(names);
   }, [userId]);
+
+  useEffect(() => {
+    loadData();
+
+    // Auto-refresh every 15 seconds
+    intervalRef.current = setInterval(loadData, 15_000);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [loadData]);
 
   if (!stats) {
     return (
@@ -96,13 +83,6 @@ export default function DashboardOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Demo banner */}
-      {isDemo && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
-          Demo data — register an agent to see your real data
-        </div>
-      )}
-
       {/* Header */}
       <div>
         <h2 className="text-xl font-semibold text-white">Overview</h2>

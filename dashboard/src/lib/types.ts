@@ -63,3 +63,14 @@ export interface Stats {
   pendingApprovals: number;
   allowRate: number;
 }
+
+export interface UserPlan {
+  plan: string;
+  subscriptionStatus: string;
+  subscriptionEndsAt: string | null;
+  maxAgents: number;
+  maxEventsPerDay: number;
+  eventsToday: number;
+  stripeCustomerId: string | null;
+  isGracePeriod: boolean;
+}

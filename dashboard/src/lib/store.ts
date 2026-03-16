@@ -9,7 +9,9 @@ import type {
   Approval,
   PolicyConfig,
   Stats,
+  UserPlan,
 } from "./types";
+import { PLAN_LIMITS, getEffectivePlan, type PlanName } from "./stripe";
 
 export interface AuditLogFilters {
   agentId?: string;
@@ -324,6 +326,101 @@ export async function getUserByEmail(
     .single();
 
   return data;
+}
+
+// ── Plan & Quota ────────────────────────────────────────────────────────────
+
+export async function getUserPlan(userId: string): Promise<Omit<UserPlan, "agentCount">> {
+  const supabase = createServiceClient();
+  const { data: user } = await supabase
+    .from("users")
+    .select("plan, stripe_customer_id, stripe_subscription_id, subscription_status, subscription_ends_at, events_today, events_reset_at")
+    .eq("id", userId)
+    .single();
+
+  if (!user) {
+    return {
+      plan: "free",
+      subscriptionStatus: "none",
+      subscriptionEndsAt: null,
+      maxAgents: PLAN_LIMITS.free.maxAgents,
+      maxEventsPerDay: PLAN_LIMITS.free.maxEventsPerDay,
+      eventsToday: 0,
+      stripeCustomerId: null,
+      isGracePeriod: false,
+    };
+  }
+
+  const effectivePlan = getEffectivePlan(user);
+  const limits = PLAN_LIMITS[effectivePlan];
+  const isGracePeriod =
+    user.subscription_status === "canceled" &&
+    effectivePlan !== "free";
+
+  // Reset counter if it's a new day
+  let eventsToday = user.events_today ?? 0;
+  if (user.events_reset_at) {
+    const resetAt = new Date(user.events_reset_at);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    if (resetAt < todayStart) {
+      eventsToday = 0;
+    }
+  }
+
+  return {
+    plan: effectivePlan,
+    subscriptionStatus: user.subscription_status ?? "none",
+    subscriptionEndsAt: user.subscription_ends_at ?? null,
+    maxAgents: limits.maxAgents,
+    maxEventsPerDay: limits.maxEventsPerDay,
+    eventsToday,
+    stripeCustomerId: user.stripe_customer_id ?? null,
+    isGracePeriod,
+  };
+}
+
+export async function getAgentCount(userId: string): Promise<number> {
+  const supabase = createServiceClient();
+  const { count, error } = await supabase
+    .from("agents")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("getAgentCount error:", error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+export async function addAgentWithPlanCheck(
+  userId: string,
+  name: string,
+): Promise<Agent> {
+  const supabase = createServiceClient();
+
+  // Check plan limits
+  const { data: user } = await supabase
+    .from("users")
+    .select("plan, subscription_status, subscription_ends_at")
+    .eq("id", userId)
+    .single();
+
+  const effectivePlan = getEffectivePlan(user ?? {});
+  const limits = PLAN_LIMITS[effectivePlan as PlanName];
+
+  if (limits.maxAgents > 0) {
+    const currentCount = await getAgentCount(userId);
+    if (currentCount >= limits.maxAgents) {
+      throw new Error(
+        `Agent limit reached (${limits.maxAgents} on ${effectivePlan} plan). Upgrade your plan to add more agents.`,
+      );
+    }
+  }
+
+  return addAgent(userId, name);
 }
 
 // ── Row Mappers ──────────────────────────────────────────────────────────────

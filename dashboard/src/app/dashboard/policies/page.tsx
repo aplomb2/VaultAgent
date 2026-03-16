@@ -5,7 +5,6 @@ import { useSession } from "next-auth/react";
 import PolicyEditor from "@/components/PolicyEditor";
 import type { Agent, PolicyConfig } from "@/lib/types";
 import { getPolicies, updatePolicies, getAgents } from "@/lib/store";
-import { getDemoPolicies, getDemoAgents } from "@/lib/demo-data";
 
 export default function PoliciesPage() {
   const { data: session } = useSession();
@@ -14,7 +13,6 @@ export default function PoliciesPage() {
   const [config, setConfig] = useState<PolicyConfig | null>(null);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
     if (!userId) return;
@@ -25,15 +23,8 @@ export default function PoliciesPage() {
         getAgents(userId),
       ]);
 
-      if (agentsData.length === 0) {
-        setConfig(getDemoPolicies());
-        setAgents(getDemoAgents());
-        setIsDemo(true);
-      } else {
-        setConfig(policiesData);
-        setAgents(agentsData);
-        setIsDemo(false);
-      }
+      setConfig(policiesData);
+      setAgents(agentsData);
       setLoading(false);
     }
 
@@ -41,7 +32,7 @@ export default function PoliciesPage() {
   }, [userId]);
 
   async function handleSave(newConfig: PolicyConfig) {
-    if (isDemo || !userId) return;
+    if (!userId) return;
     await updatePolicies(userId, newConfig);
   }
 
@@ -56,13 +47,6 @@ export default function PoliciesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Demo banner */}
-      {isDemo && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
-          Demo data — register an agent to see your real data
-        </div>
-      )}
-
       <div>
         <h2 className="text-xl font-semibold text-white">Policies</h2>
         <p className="mt-1 text-sm text-slate-400">

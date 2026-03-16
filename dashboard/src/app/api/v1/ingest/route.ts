@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { PLAN_LIMITS, getEffectivePlan, type PlanName } from "@/lib/stripe";
 
 const VALID_ACTIONS = new Set(["allow", "deny", "require_approval"]);
 
@@ -80,6 +81,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { agent } = authResult;
 
+  // ── Quota check ───────────────────────────────────────────────────────────
+  const supabaseForQuota = createServiceClient();
+  const { data: owner } = await supabaseForQuota
+    .from("users")
+    .select("plan, subscription_status, subscription_ends_at")
+    .eq("id", agent.user_id)
+    .single();
+
+  const effectivePlan = getEffectivePlan(owner ?? {});
+  const limits = PLAN_LIMITS[effectivePlan as PlanName];
+
   let body: unknown;
   try {
     body = await request.json();
@@ -126,6 +138,31 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         { error: `Event at index ${i}: ${validationError}` },
         { status: 400 },
+      );
+    }
+  }
+
+  // Check daily event quota
+  if (limits.maxEventsPerDay > 0) {
+    const { data: quotaResult, error: quotaError } = await supabaseForQuota
+      .rpc("check_and_increment_events", {
+        p_user_id: agent.user_id,
+        p_count: events.length,
+        p_daily_limit: limits.maxEventsPerDay,
+      });
+
+    if (quotaError) {
+      console.error("Quota check error:", quotaError);
+      // Non-fatal: allow the request if the RPC doesn't exist yet
+    } else if (quotaResult === -1) {
+      return NextResponse.json(
+        {
+          error: "Daily event quota exceeded",
+          plan: effectivePlan,
+          limit: limits.maxEventsPerDay,
+          upgrade_url: "/dashboard/billing",
+        },
+        { status: 429 },
       );
     }
   }

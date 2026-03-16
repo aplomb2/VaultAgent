@@ -8,7 +8,8 @@ export default auth((req) => {
     pathname === "/" ||
     pathname === "/login" ||
     pathname.startsWith("/api/v1/") ||
-    pathname.startsWith("/api/auth/")
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/stripe/webhook")
   ) {
     return;
   }

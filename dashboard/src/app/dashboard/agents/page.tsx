@@ -11,11 +11,13 @@ import {
   EyeOff,
   X,
   Check,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Agent } from "@/lib/types";
-import { getAgents, addAgent } from "@/lib/store";
-import { getDemoAgents } from "@/lib/demo-data";
+import { getAgents, addAgentWithPlanCheck } from "@/lib/store";
 
 const statusBadge: Record<Agent["status"], string> = {
   active: "bg-emerald-500/10 text-emerald-400",
@@ -44,24 +46,20 @@ export default function AgentsPage() {
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isDemo, setIsDemo] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [newName, setNewName] = useState("");
   const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [newAgentId, setNewAgentId] = useState<string | null>(null);
+  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) return;
 
     async function load() {
       const data = await getAgents(userId);
-      if (data.length === 0) {
-        setAgents(getDemoAgents());
-        setIsDemo(true);
-      } else {
-        setAgents(data);
-        setIsDemo(false);
-      }
+      setAgents(data);
       setLoading(false);
     }
 
@@ -70,15 +68,18 @@ export default function AgentsPage() {
 
   async function handleRegister() {
     if (!newName.trim() || !userId) return;
+    setAgentError(null);
     try {
-      const agent = await addAgent(userId, newName.trim());
+      const agent = await addAgentWithPlanCheck(userId, newName.trim());
       setAgents((prev) => [agent, ...prev]);
       setNewName("");
       setShowForm(false);
       setRevealedKeys((prev) => new Set(prev).add(agent.id));
-      setIsDemo(false);
+      setNewAgentId(agent.id);
+      setShowQuickStart(true);
     } catch (err) {
-      console.error("Failed to register agent:", err);
+      const message = err instanceof Error ? err.message : "Failed to register agent";
+      setAgentError(message);
     }
   }
 
@@ -108,13 +109,6 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Demo banner */}
-      {isDemo && (
-        <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-400">
-          Demo data — register an agent to see your real data
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -165,6 +159,81 @@ export default function AgentsPage() {
           </div>
         </div>
       )}
+
+      {/* Agent limit error */}
+      {agentError && (
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-400">
+          {agentError}{" "}
+          {agentError.includes("Upgrade") && (
+            <a href="/dashboard/billing" className="underline hover:text-red-300">
+              Go to Billing
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Quick Start guide — shown after registering a new agent */}
+      {showQuickStart && newAgentId && (() => {
+        const newAgent = agents.find((a) => a.id === newAgentId);
+        if (!newAgent) return null;
+        return (
+          <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.03] p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Terminal className="h-4 w-4 text-emerald-400" />
+                <h3 className="text-sm font-semibold text-white">
+                  Quick Start — {newAgent.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowQuickStart(false)}
+                className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-800 hover:text-slate-300"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mb-4 text-sm text-slate-400">
+              Your API key: <code className="rounded bg-slate-800 px-2 py-0.5 font-mono text-xs text-emerald-400">{newAgent.apiKey}</code>
+              <button
+                onClick={() => copyKey(newAgent)}
+                className="ml-2 text-xs text-slate-500 hover:text-emerald-400"
+              >
+                {copiedId === newAgent.id ? "Copied!" : "Copy"}
+              </button>
+            </p>
+
+            <div className="space-y-4">
+              {/* Python SDK */}
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">Python SDK</p>
+                <pre className="rounded-lg bg-slate-900 p-3 font-mono text-xs text-slate-300">
+{`pip install vaultagent
+
+from vaultagent import VaultAgent
+vault = VaultAgent(api_key="${newAgent.apiKey}")`}
+                </pre>
+              </div>
+
+              {/* MCP Proxy */}
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-slate-500">MCP Proxy (Claude Desktop / OpenClaw / Cursor)</p>
+                <pre className="rounded-lg bg-slate-900 p-3 font-mono text-xs text-slate-300">
+{`npx vaultagent-mcp-proxy \\
+  --policy vaultagent.policy.yaml \\
+  --cloud-endpoint ${typeof window !== "undefined" ? window.location.origin : ""}/api/v1/ingest \\
+  --cloud-api-key ${newAgent.apiKey} \\
+  -- npx -y @modelcontextprotocol/server-filesystem /workspace`}
+                </pre>
+              </div>
+            </div>
+
+            <p className="mt-4 text-xs text-slate-500">
+              Next: Go to <a href="/dashboard/policies" className="text-emerald-400 hover:underline">Policies</a> to configure tool permissions.
+            </p>
+          </div>
+        );
+      })()}
 
       {/* Agents table */}
       <div className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900/50">
