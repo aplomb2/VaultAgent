@@ -13,4 +13,6 @@ mcp-server/node_modules/
 dashboard/node_modules/
 dashboard/.next/
 dashboard/tsconfig.tsbuildinfo
+openclaw-plugin/node_modules/
+openclaw-plugin/dist/
 package-lock.json

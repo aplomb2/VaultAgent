@@ -1,0 +1,43 @@
+# One-click deployment: OpenClaw + VaultAgent MCP Proxy + Dashboard
+#
+# Usage:
+#   docker compose up -d
+#
+# Services:
+#   - openclaw:  OpenClaw agent on port 3001
+#   - dashboard: VaultAgent Dashboard on port 3000
+#
+# The MCP proxy runs inside the OpenClaw container, wrapping any
+# MCP server that OpenClaw connects to.
+
+services:
+  dashboard:
+    build:
+      context: ../../dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../../dashboard/.env
+    restart: unless-stopped
+
+  openclaw:
+    image: openclawai/openclaw:latest
+    ports:
+      - "3001:3001"
+    volumes:
+      # Mount the MCP proxy and policy into the OpenClaw container
+      - ../../mcp-server/dist:/opt/vaultagent-mcp
+      - ./vaultagent.policy.yaml:/opt/vaultagent.policy.yaml:ro
+      - ./openclaw.json:/app/openclaw.json:ro
+      # Shared workspace for the filesystem MCP server
+      - workspace:/home/user/workspace
+    environment:
+      - VAULTAGENT_CLOUD_ENDPOINT=http://dashboard:3000/api/v1/ingest
+      - VAULTAGENT_AGENT_ID=openclaw
+    depends_on:
+      - dashboard
+    restart: unless-stopped
+
+volumes:
+  workspace:

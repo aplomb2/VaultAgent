@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "filesystem-protected": {
+      "command": "node",
+      "args": [
+        "/path/to/VaultAgent/mcp-server/dist/index.js",
+        "--policy", "/path/to/vaultagent.policy.yaml",
+        "--agent-id", "openclaw",
+        "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user/workspace"
+      ]
+    }
+  }
+}

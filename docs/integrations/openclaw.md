@@ -1,50 +1,260 @@
 # OpenClaw Integration
 
-> **Status: Planned** -- This integration is on the VaultAgent roadmap and is not yet available.
+VaultAgent adds **runtime permission enforcement**, **audit logging**, and **human approval workflows** to [OpenClaw](https://github.com/openclawai/openclaw) — the most popular open-source AI agent framework.
 
-## What is OpenClaw?
+## Why OpenClaw Needs VaultAgent
 
-OpenClaw is an emerging open standard for AI agent permissions. It aims to provide a vendor-neutral, interoperable format for defining and enforcing what AI agents are allowed to do across different platforms, frameworks, and runtimes.
+OpenClaw gives AI agents powerful capabilities: file system access, shell execution, browser automation, and a marketplace of community-built skills. That power comes with risk:
 
-The goal of OpenClaw is to make agent permission policies portable -- write once, enforce everywhere -- regardless of whether the agent is built with OpenAI, Anthropic, LangChain, or any other framework.
+- **135K+ exposed instances** discovered in public security scans ([CrowdStrike 2025 Threat Report](https://www.crowdstrike.com))
+- **12% of the skill marketplace** flagged for unsafe patterns ([Cisco Talos research](https://talosintelligence.com))
+- No built-in mechanism to restrict which tools an agent can call, or to require human approval for sensitive operations
 
-## Planned Integration
+### VaultAgent vs SecureClaw
 
-VaultAgent plans to support OpenClaw as a policy format alongside the existing YAML format. The planned integration includes:
+SecureClaw (by Adversa AI) offers audit checks and behavioral rules at the prompt level. VaultAgent takes a different approach:
 
-### Policy Import/Export
+| Capability | VaultAgent | SecureClaw |
+|---|---|---|
+| **Enforcement layer** | Code-level (MCP proxy intercepts tool calls) | Prompt-level (behavioral rules) |
+| **Bypassable?** | No — tool calls are blocked before execution | Yes — prompt injection can bypass rules |
+| **Real-time dashboard** | Yes — live monitoring, charts, alerts | No |
+| **Human approval workflow** | Yes — `require_approval` pauses for review | No |
+| **Audit logging** | Structured JSONL + cloud API | Log file |
+| **Policy format** | YAML with glob matching + constraints | JSON behavioral rules |
+| **MCP native** | Yes — runs as MCP proxy server | No |
 
-- **Import:** Load OpenClaw-formatted policies directly into VaultAgent, converting them to the internal `Policy` representation.
-- **Export:** Convert VaultAgent YAML policies to OpenClaw format for use with other OpenClaw-compatible tools.
+## Architecture
 
-### Runtime Compatibility
+```
+OpenClaw Agent
+    │
+    │ tool call (via MCP)
+    ▼
+┌────────────────────────────┐
+│   VaultAgent MCP Proxy     │
+│                            │
+│  1. Match tool against     │
+│     policy rules           │
+│  2. Check constraints      │
+│  3. Decision:              │
+│     ✅ allow → forward     │
+│     ❌ deny  → block       │
+│     ⏳ approval → pause    │
+│  4. Log audit event        │
+└────────────────────────────┘
+    │
+    ▼
+Upstream MCP Server (filesystem, GitHub, etc.)
+```
 
-- VaultAgent's decision engine would evaluate OpenClaw policies using the same enforcement pipeline (constraint checking, rate limiting, audit logging).
-- Existing middleware wrappers (OpenAI, Anthropic, LangChain, MCP) would work without modification.
+The MCP proxy sits between OpenClaw and any upstream MCP server. OpenClaw sees the same tools, but every call goes through VaultAgent policy enforcement. No changes to OpenClaw code are required.
 
-### Dashboard Support
+## Quick Start
 
-- The VaultAgent Dashboard would support viewing and editing OpenClaw-formatted policies.
-- Audit logs would reference OpenClaw policy identifiers when applicable.
+### Prerequisites
 
-## How This Relates to VaultAgent
+- Node.js 18+
+- OpenClaw installed and running
+- VaultAgent MCP proxy built (`cd mcp-server && npm install && npm run build`)
 
-VaultAgent's YAML policy format and OpenClaw share similar goals:
+### Step 1: Create a Policy
 
-| Concept | VaultAgent | OpenClaw |
-|---------|-----------|----------|
-| Define allowed tools | `tools:` rules with glob matching | Standard permission declarations |
-| Constraint enforcement | `constraints:` on rules | Standardized constraint schema |
-| Action types | `allow`, `deny`, `require_approval` | To be defined by the standard |
-| Audit logging | Built-in JSONL + cloud | Standard audit event format |
+Create `vaultagent.policy.yaml` with rules for the tools your MCP server exposes:
 
-When OpenClaw reaches a stable specification, VaultAgent will adopt it as a supported input format while maintaining backward compatibility with the existing YAML policy format.
+```yaml
+version: 1
+defaultDecision: deny
 
-## Timeline
+rules:
+  # Allow read operations
+  - pattern: "fs_read"
+    decision: allow
+  - pattern: "fs_search"
+    decision: allow
+  - pattern: "fs_list"
+    decision: allow
 
-The OpenClaw standard is currently in development. VaultAgent will track the standard and publish integration support as the specification stabilizes. Watch the [VaultAgent repository](https://github.com/aplomb2/VaultAgent) and [documentation site](https://docs.vaultagent.dev) for updates.
+  # Allow writes only under ./src/
+  - pattern: "fs_write"
+    decision: allow
+    argConstraints:
+      path: "^\\./src/.*"
+  - pattern: "fs_write"
+    decision: deny
+
+  # Shell commands require human approval
+  - pattern: "bash"
+    decision: require_approval
+  - pattern: "exec_command"
+    decision: require_approval
+
+  # Browser navigation is safe; typing requires approval
+  - pattern: "browser_navigate"
+    decision: allow
+  - pattern: "browser_click"
+    decision: allow
+  - pattern: "browser_type"
+    decision: require_approval
+
+  # Deny everything else
+  - pattern: "*"
+    decision: deny
+```
+
+### Step 2: Configure OpenClaw
+
+Add the VaultAgent MCP proxy to your `openclaw.json`:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-protected": {
+      "command": "node",
+      "args": [
+        "/path/to/VaultAgent/mcp-server/dist/index.js",
+        "--policy", "/path/to/vaultagent.policy.yaml",
+        "--agent-id", "openclaw",
+        "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user/workspace"
+      ]
+    }
+  }
+}
+```
+
+Replace `/path/to/VaultAgent` and `/path/to/vaultagent.policy.yaml` with the actual paths on your system.
+
+**How this works:** OpenClaw launches the VaultAgent MCP proxy as a standard MCP server. The proxy in turn spawns the upstream MCP server (everything after `--`) and forwards tool calls through policy enforcement.
+
+### Step 3: Verify
+
+Start OpenClaw. When the agent calls a tool:
+
+- **Allowed tools** execute normally — the agent won't notice any difference.
+- **Denied tools** return an error: `[VaultAgent] Tool call denied by policy`.
+- **Approval-required tools** return a message explaining the call is paused for review.
+
+Audit events are written to `vaultagent-mcp-audit.jsonl` in the working directory.
+
+## Connect to the Dashboard
+
+To see audit events in the VaultAgent Dashboard, add cloud reporting flags:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-protected": {
+      "command": "node",
+      "args": [
+        "/path/to/VaultAgent/mcp-server/dist/index.js",
+        "--policy", "/path/to/vaultagent.policy.yaml",
+        "--agent-id", "openclaw",
+        "--cloud-endpoint", "https://your-dashboard.com/api/v1/ingest",
+        "--cloud-api-key", "va_sk_xxx",
+        "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user/workspace"
+      ]
+    }
+  }
+}
+```
+
+Events are buffered and sent in batches (50 events or every 10 seconds).
+
+## Docker Deployment
+
+A `docker-compose.yml` is provided in `examples/openclaw/` for a one-click deployment of OpenClaw + VaultAgent Dashboard:
+
+```bash
+cd examples/openclaw
+docker compose up -d
+
+# Dashboard:  http://localhost:3000
+# OpenClaw:   http://localhost:3001
+```
+
+## Policy Examples
+
+### Development: Permissive
+
+Allow most tools, require approval only for shell commands:
+
+```yaml
+version: 1
+defaultDecision: allow
+
+rules:
+  - pattern: "bash"
+    decision: require_approval
+  - pattern: "exec_command"
+    decision: require_approval
+```
+
+### Production: Restrictive
+
+Deny by default, explicitly allow only what's needed:
+
+```yaml
+version: 1
+defaultDecision: deny
+
+rules:
+  - pattern: "fs_read"
+    decision: allow
+  - pattern: "fs_list"
+    decision: allow
+  - pattern: "fs_search"
+    decision: allow
+```
+
+### API-Focused Agent
+
+Allow HTTP requests to specific domains:
+
+```yaml
+version: 1
+defaultDecision: deny
+
+rules:
+  - pattern: "http_request"
+    decision: allow
+    argConstraints:
+      url: "^https://api\\.company\\.com/.*"
+  - pattern: "http_request"
+    decision: deny
+```
+
+## OpenClaw Plugin
+
+For deeper integration beyond MCP, VaultAgent provides an OpenClaw plugin that hooks into the agent's tool call lifecycle directly. See the [`openclaw-plugin/`](../../openclaw-plugin/) directory and its [README](../../openclaw-plugin/README.md).
+
+## Troubleshooting
+
+### "Missing '--' separator before upstream command"
+
+The VaultAgent MCP proxy expects a `--` separator between its own flags and the upstream MCP server command. Make sure your `args` array includes `"--"` before the upstream command.
+
+### Policy not loading
+
+- Verify the policy file path is absolute or relative to the working directory.
+- Check the proxy stderr output for parsing errors: `[vaultagent-mcp] Fatal error: ...`
+- Validate your YAML syntax — the policy uses `version` (number), `defaultDecision`, and `rules` (array).
+
+### Tools not appearing
+
+The MCP proxy forwards `listTools` from the upstream server. If no tools appear:
+
+1. Test the upstream server directly (without the proxy) to confirm it works.
+2. Check that the upstream command and args are correct.
+3. Look at stderr for connection errors.
+
+### Audit events not reaching the Dashboard
+
+- Confirm `--cloud-endpoint` points to your Dashboard's `/api/v1/ingest` route.
+- Confirm `--cloud-api-key` matches an agent API key configured in the Dashboard.
+- Events are buffered — they may take up to 10 seconds to appear.
 
 ## See Also
 
-- [Policy Reference](../policy-reference.md) -- VaultAgent's current YAML policy format.
-- [SDK Reference](../sdk-reference.md) -- Full API documentation.
+- [MCP Proxy Integration](./mcp.md) — General MCP proxy documentation.
+- [Policy Reference](../policy-reference.md) — Full policy specification.
+- [Dashboard Guide](../dashboard-guide.md) — Using the web dashboard.

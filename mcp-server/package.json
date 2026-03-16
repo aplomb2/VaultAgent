@@ -4,6 +4,11 @@
   "description": "MCP proxy server with VaultAgent permission controls",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./policy": "./dist/policy.js",
+    "./audit": "./dist/audit.js"
+  },
   "bin": {
     "vaultagent-mcp": "dist/index.js"
   },

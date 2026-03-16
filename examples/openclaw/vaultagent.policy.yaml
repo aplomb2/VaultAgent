@@ -1,0 +1,53 @@
+# VaultAgent policy for OpenClaw agents
+#
+# This policy enforces least-privilege access for OpenClaw tool calls
+# routed through the VaultAgent MCP proxy.
+#
+# Rules are evaluated top-to-bottom; the first match wins.
+# Any tool not explicitly listed is denied by default.
+
+version: 1
+defaultDecision: deny
+
+rules:
+  # ── Filesystem: read operations are safe ──────────────────────────
+  - pattern: "fs_read"
+    decision: allow
+
+  - pattern: "fs_search"
+    decision: allow
+
+  - pattern: "fs_list"
+    decision: allow
+
+  # ── Filesystem: writes allowed only under ./src/ ──────────────────
+  - pattern: "fs_write"
+    decision: allow
+    argConstraints:
+      path: "^\\./src/.*"
+
+  # Deny fs_write to any other path
+  - pattern: "fs_write"
+    decision: deny
+
+  # ── Shell: always require human approval ──────────────────────────
+  - pattern: "bash"
+    decision: require_approval
+
+  - pattern: "exec_command"
+    decision: require_approval
+
+  # ── Browser: navigation and clicks are safe ───────────────────────
+  - pattern: "browser_navigate"
+    decision: allow
+
+  - pattern: "browser_click"
+    decision: allow
+
+  # ── Browser: typing can submit forms — require approval ───────────
+  - pattern: "browser_type"
+    decision: require_approval
+
+  # ── Catch-all: deny everything else ───────────────────────────────
+  - pattern: "*"
+    decision: deny

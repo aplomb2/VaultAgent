@@ -157,6 +157,36 @@ vaultagent mcp-proxy \
 
 Works with OpenClaw, Claude Desktop, Cursor, and any MCP-compatible client.
 
+### OpenClaw
+
+VaultAgent integrates with [OpenClaw](https://github.com/openclawai/openclaw) to add runtime permission enforcement, audit logging, and human approval workflows. No changes to OpenClaw code required — the VaultAgent MCP proxy wraps any upstream MCP server that OpenClaw connects to.
+
+**Quick start:** Add the VaultAgent MCP proxy to your `openclaw.json`:
+
+```json
+{
+  "mcpServers": {
+    "filesystem-protected": {
+      "command": "node",
+      "args": [
+        "/path/to/VaultAgent/mcp-server/dist/index.js",
+        "--policy", "/path/to/vaultagent.policy.yaml",
+        "--agent-id", "openclaw",
+        "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/workspace"
+      ]
+    }
+  }
+}
+```
+
+**For deeper integration** beyond MCP, install the OpenClaw plugin:
+
+```bash
+cd openclaw-plugin && npm install && npm run build
+```
+
+See the full [OpenClaw Integration Guide](docs/integrations/openclaw.md) for policies, Docker deployment, and troubleshooting.
+
 ## Dashboard
 
 The VaultAgent Dashboard gives your team real-time visibility into agent behavior:
