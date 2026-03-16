@@ -7,9 +7,9 @@ when the specific wrapper function is actually called.
 
 from __future__ import annotations
 
-from vaultagent.middleware.openai import wrap_openai
 from vaultagent.middleware.anthropic import wrap_anthropic
 from vaultagent.middleware.langchain import wrap_langchain_tools
+from vaultagent.middleware.openai import wrap_openai
 
 __all__ = [
     "wrap_openai",

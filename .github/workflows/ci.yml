@@ -63,13 +63,14 @@ jobs:
   openclaw-plugin:
     name: OpenClaw Plugin
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: openclaw-plugin
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
-      - run: npx tsc --noEmit
+      - name: Build mcp-server (dependency)
+        run: npm install && npm run build
+        working-directory: mcp-server
+      - name: Install and type-check plugin
+        run: npm install && npx tsc --noEmit
+        working-directory: openclaw-plugin

@@ -5,8 +5,9 @@ from __future__ import annotations
 import functools
 import logging
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 from vaultagent.core.audit import AuditLogger
 from vaultagent.core.decision import Decision, DecisionResult

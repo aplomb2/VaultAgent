@@ -50,7 +50,7 @@ class ConstraintChecker:
         Returns: (passed, constraints_applied, denial_reason)
         """
         applied: list[str] = []
-        
+
         # Table whitelist
         if "tables" in constraints:
             allowed_tables = constraints["tables"]
@@ -166,7 +166,10 @@ class Decision:
                 tool=tool_name,
                 agent_id=agent_id,
                 rule=rule,
-                denial_reason=f"Policy: tool '{tool_name}' is {action.value} for agent '{agent_id}'",
+                denial_reason=(
+                    f"Policy: tool '{tool_name}' is {action.value}"
+                    f" for agent '{agent_id}'"
+                ),
             )
 
         # If allowed, check constraints

@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, NoReturn
+from typing import NoReturn
 
 
 # ANSI color codes
@@ -488,12 +489,12 @@ def cmd_init(args: argparse.Namespace) -> int:
 
     if output_path.exists():
         print(f"\n  {_yellow('!')} File already exists: {output_path}")
-        print(f"    Use a different name or remove the existing file.\n")
+        print("    Use a different name or remove the existing file.\n")
         return 1
 
     output_path.write_text(_STARTER_POLICY)
     print(f"\n  {_green('✓')} Created {_bold(str(output_path))}")
-    print(f"    Edit this file to define your agent permissions.\n")
+    print("    Edit this file to define your agent permissions.\n")
     return 0
 
 
